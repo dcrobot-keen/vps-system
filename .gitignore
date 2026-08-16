@@ -1,0 +1,23 @@
+# data
+data/*
+!data/.gitkeep
+*.db
+*.depth
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+outputs/
+
+# ios / xcode
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
+.build/
+
+# os
+.DS_Store
+Thumbs.db

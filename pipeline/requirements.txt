@@ -1,0 +1,7 @@
+# hloc 및 의존성 (SuperPoint/NetVLAD/LightGlue, pycolmap 기반 PnP)
+hloc @ git+https://github.com/cvg/Hierarchical-Localization.git
+
+numpy
+opencv-python
+h5py
+pillow
