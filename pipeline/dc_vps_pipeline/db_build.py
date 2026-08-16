@@ -7,8 +7,8 @@ InLoc 방식: COLMAP 삼각측량 없이, LiDAR depth에서 직접 2D-3D 대응�
 4. depth 기준 intrinsics로 backproject -> ARKit pose로 world 좌표 변환
 5. keypoint_id -> 3D 좌표 테이블을 저장 (localize_sfm.py의 COLMAP 모델을 대체)
 
-TODO: hloc 버전별 extract_features 반환/HDF5 스키마를 확인해서
-      feats 순회 부분(`# TODO: hloc feature 포맷에 맞게 순회`)을 채워 넣을 것.
+HDF5 스키마: 이미지의 root(images_dir) 기준 상대경로(POSIX)가 그룹 키, 그 아래
+keypoints/descriptors/scores/image_size 데이터셋 (hloc.extract_features 기준 확인됨).
 """
 
 from __future__ import annotations
@@ -50,8 +50,10 @@ def build_db(scan_dir: Path, output_dir: Path) -> None:
             if rgb_name not in feats_file:
                 continue
 
-            # TODO: hloc feature 포맷에 맞게 순회 (버전에 따라 group 구조가 다를 수 있음)
-            keypoints = feats_file[rgb_name]["keypoints"][()]
+            # hloc은 이미지의 root(images_dir) 기준 상대경로(POSIX)를 그대로 HDF5 그룹 키로
+            # 쓴다 (rgb/ 아래에 서브폴더가 없으므로 파일명과 동일). keypoints는
+            # as_half=True(기본값)면 float16으로 저장되므로 backproject 전에 float64로 승격.
+            keypoints = feats_file[rgb_name]["keypoints"][()].astype(np.float64)
 
             depth = load_depth_raw(frame.depth_path, config.DEPTH_WIDTH, config.DEPTH_HEIGHT)
             confidence_path = frame.depth_path.with_suffix(".conf")

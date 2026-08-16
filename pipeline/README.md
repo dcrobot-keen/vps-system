@@ -4,11 +4,21 @@ scan_<name>/ 폴더(ios-capture 앱 출력)를 받아 hloc DB(2D-3D 대응 테�
 
 ## 설치
 
+hloc은 `pip install git+https://...`로 설치하면 third_party git submodule
+(SuperGluePretrainedNetwork 등)이 빠져서 SuperPoint import가 깨진다
+(`ModuleNotFoundError: No module named 'SuperGluePretrainedNetwork'`).
+반드시 `--recursive`로 clone한 뒤 editable 설치할 것.
+
 ```
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
+
+git clone --recursive https://github.com/cvg/Hierarchical-Localization.git third_party/Hierarchical-Localization
+pip install -e third_party/Hierarchical-Localization
 ```
+
+pycolmap(PnP+RANSAC용)은 hloc 설치 시 의존성으로 함께 설치된다.
 
 ## 실행
 

@@ -1,5 +1,8 @@
-# hloc 및 의존성 (SuperPoint/NetVLAD/LightGlue, pycolmap 기반 PnP)
-hloc @ git+https://github.com/cvg/Hierarchical-Localization.git
+# hloc은 pip VCS 설치(git+https://...)로는 third_party git submodule
+# (SuperGluePretrainedNetwork 등)이 받아지지 않아 SuperPoint import가 깨진다.
+# third_party/Hierarchical-Localization을 --recursive로 clone한 뒤
+# `pip install -e third_party/Hierarchical-Localization`로 설치할 것 (README 참고).
+# pycolmap은 hloc의 의존성으로 함께 설치된다 (PnP+RANSAC pose 추정용).
 
 numpy
 opencv-python

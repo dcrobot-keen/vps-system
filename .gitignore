@@ -11,6 +11,9 @@ __pycache__/
 venv/
 *.egg-info/
 outputs/
+third_party/
+_e2e_scan/
+_e2e_out/
 
 # ios / xcode
 *.xcodeproj/xcuserdata/
@@ -21,3 +24,6 @@ DerivedData/
 # os
 .DS_Store
 Thumbs.db
+
+# claude code
+.claude/
