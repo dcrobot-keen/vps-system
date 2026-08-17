@@ -8,27 +8,29 @@
 
 db_build.py가 만든 kp_to_3d_db.pkl + hloc feature/global descriptor 파일을 로드해서 사용한다.
 
-feature 추출은 hloc.extract_features.main()을 쿼리 1장짜리 임시 디렉터리에 대해 그대로
-호출한다. db_build.py와 완전히 동일한 전처리/후처리(리사이즈, keypoint 좌표 원본 해상도로
-역스케일)를 재사용해서 DB와 쿼리 간 좌표계 불일치를 피하기 위함이다. 매 요청마다 모델
-가중치를 다시 로드하는 비용이 있지만(수 초), 이 서버는 아직 실시간 로봇 루프가 아니라
-프로토타입 단계라 우선순위가 아니다 — 필요해지면 모델을 프로세스 시작 시 한 번만 로드하도록
-바꿀 수 있다.
+SuperPoint/NetVLAD/LightGlue 모델은 Localizer.__init__에서 한 번만 로드해 인스턴스에
+캐싱해둔다 (이전엔 hloc.extract_features.main()/match_features.match_from_paths()를
+쿼리마다 호출해서 매 요청 모델을 새로 읽어들였고, 그게 요청당 수십 초의 대부분을
+차지했다). 전처리(리사이즈, grayscale)와 후처리(keypoint를 원본 해상도로 역스케일)는
+hloc.extract_features.ImageDataset/main()의 로직을 그대로 옮겨왔다 — DB 빌드 때와
+동일한 좌표 변환이어야 좌표계가 어긋나지 않는다.
 """
 
 from __future__ import annotations
 
 import pickle
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+import cv2
 import h5py
 import numpy as np
 import pycolmap
+import torch
 
-from hloc import extract_features, match_features
-from hloc.utils.parsers import names_to_pair
+from hloc import extract_features, extractors, match_features, matchers
+from hloc.extract_features import resize_image
+from hloc.utils.base_model import dynamic_load
 
 # pipeline/dc_vps_pipeline/config.py의 SUPERPOINT_CONF/RETRIEVAL_CONF/RETRIEVAL_TOP_K와
 # 반드시 동일해야 한다 — DB가 그 설정으로 빌드됐기 때문에 쿼리도 같은 설정으로 추출해야
@@ -51,6 +53,18 @@ class LocalizationResult:
     quaternion: list[float] | None = None  # [qx, qy, qz, qw]
     num_inliers: int = 0
     reason: str | None = None
+
+
+def _read_image_bytes(image_bytes: bytes, grayscale: bool) -> np.ndarray:
+    """hloc.utils.io.read_image과 동일하되 파일 경로 대신 메모리 바이트를 읽는다."""
+    array = np.frombuffer(image_bytes, dtype=np.uint8)
+    mode = cv2.IMREAD_GRAYSCALE if grayscale else cv2.IMREAD_COLOR
+    image = cv2.imdecode(array, mode | cv2.IMREAD_IGNORE_ORIENTATION)
+    if image is None:
+        raise ValueError("이미지를 디코딩할 수 없습니다")
+    if not grayscale and image.ndim == 3:
+        image = image[:, :, ::-1]  # BGR -> RGB
+    return image
 
 
 class Localizer:
@@ -77,6 +91,23 @@ class Localizer:
             ).astype(np.float64)
         self.db_global_descs = descs / np.linalg.norm(descs, axis=1, keepdims=True)
 
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.superpoint_model = (
+            dynamic_load(extractors, SUPERPOINT_CONF["model"]["name"])(SUPERPOINT_CONF["model"])
+            .eval()
+            .to(self.device)
+        )
+        self.netvlad_model = (
+            dynamic_load(extractors, RETRIEVAL_CONF["model"]["name"])(RETRIEVAL_CONF["model"])
+            .eval()
+            .to(self.device)
+        )
+        self.lightglue_model = (
+            dynamic_load(matchers, MATCHER_CONF["model"]["name"])(MATCHER_CONF["model"])
+            .eval()
+            .to(self.device)
+        )
+
     def localize(
         self,
         image_bytes: bytes,
@@ -87,50 +118,17 @@ class Localizer:
         width: int,
         height: int,
     ) -> LocalizationResult:
-        query_name = "query.jpg"
+        try:
+            query_pred = self._extract_superpoint(image_bytes)
+            query_global_desc = self._extract_netvlad(image_bytes)
+        except ValueError as error:
+            return LocalizationResult(success=False, reason=f"이미지 처리 실패: {error}")
 
-        with tempfile.TemporaryDirectory(prefix="dc_vps_query_") as tmp:
-            tmp_dir = Path(tmp)
-            image_dir = tmp_dir / "images"
-            image_dir.mkdir()
-            (image_dir / query_name).write_bytes(image_bytes)
+        candidates = self._retrieve_candidates(query_global_desc)
+        if not candidates:
+            return LocalizationResult(success=False, reason="검색 후보를 찾지 못함")
 
-            export_dir = tmp_dir / "export"
-            try:
-                extract_features.main(
-                    SUPERPOINT_CONF, image_dir, export_dir, image_list=[query_name]
-                )
-                extract_features.main(
-                    RETRIEVAL_CONF, image_dir, export_dir, image_list=[query_name]
-                )
-            except ValueError as error:
-                return LocalizationResult(success=False, reason=f"이미지 처리 실패: {error}")
-
-            query_features_path = export_dir / f"{SUPERPOINT_CONF['output']}.h5"
-            query_global_path = export_dir / f"{RETRIEVAL_CONF['output']}.h5"
-
-            candidates = self._retrieve_candidates(query_global_path, query_name)
-            if not candidates:
-                return LocalizationResult(success=False, reason="검색 후보를 찾지 못함")
-
-            pairs_path = tmp_dir / "pairs.txt"
-            pairs_path.write_text(
-                "\n".join(f"{query_name} {candidate}" for candidate in candidates) + "\n"
-            )
-
-            match_path = tmp_dir / "matches.h5"
-            match_features.match_from_paths(
-                MATCHER_CONF,
-                pairs_path,
-                match_path,
-                query_features_path,
-                self.features_path,
-            )
-
-            points2d, points3d = self._gather_correspondences(
-                query_name, candidates, query_features_path, match_path
-            )
-
+        points2d, points3d = self._gather_correspondences(query_pred, candidates)
         if len(points2d) < 4:
             return LocalizationResult(
                 success=False, reason=f"2D-3D 대응점 부족 ({len(points2d)}개, 최소 4개 필요)"
@@ -165,9 +163,50 @@ class Localizer:
             num_inliers=ret["num_inliers"],
         )
 
-    def _retrieve_candidates(self, query_global_path: Path, query_name: str) -> list[str]:
-        with h5py.File(query_global_path, "r", libver="latest") as fd:
-            query_desc = fd[query_name]["global_descriptor"].__array__().astype(np.float64)
+    # MARK: - feature extraction (hloc.extract_features의 전처리/후처리를 인메모리로 재현)
+
+    def _preprocess(self, image_bytes: bytes, conf: dict) -> tuple[torch.Tensor, np.ndarray]:
+        grayscale = conf.get("grayscale", False)
+        image = _read_image_bytes(image_bytes, grayscale)
+        image = image.astype(np.float32)
+        original_size = np.array(image.shape[:2][::-1])  # (width, height)
+
+        resize_max = conf.get("resize_max")
+        resize_force = conf.get("resize_force", False)
+        if resize_max and (resize_force or max(original_size) > resize_max):
+            scale = resize_max / max(original_size)
+            size_new = tuple(int(round(x * scale)) for x in original_size)
+            image = resize_image(image, size_new, conf.get("interpolation", "cv2_area"))
+
+        if grayscale:
+            image = image[None]
+        else:
+            image = image.transpose((2, 0, 1))  # HxWxC -> CxHxW
+        image = image / 255.0
+
+        tensor = torch.from_numpy(image).float()[None]  # add batch dim
+        return tensor, original_size
+
+    def _extract_superpoint(self, image_bytes: bytes) -> dict:
+        tensor, original_size = self._preprocess(image_bytes, SUPERPOINT_CONF["preprocessing"])
+        with torch.no_grad():
+            pred = self.superpoint_model({"image": tensor.to(self.device)})
+        pred = {k: v[0].cpu().numpy() for k, v in pred.items()}
+
+        network_h, network_w = tensor.shape[-2:]
+        scales = (original_size / np.array([network_w, network_h])).astype(np.float32)
+        pred["keypoints"] = (pred["keypoints"] + 0.5) * scales[None] - 0.5
+        pred["image_size"] = original_size
+        return pred
+
+    def _extract_netvlad(self, image_bytes: bytes) -> np.ndarray:
+        tensor, _ = self._preprocess(image_bytes, RETRIEVAL_CONF["preprocessing"])
+        with torch.no_grad():
+            pred = self.netvlad_model({"image": tensor.to(self.device)})
+        return pred["global_descriptor"][0].cpu().numpy()
+
+    def _retrieve_candidates(self, query_desc: np.ndarray) -> list[str]:
+        query_desc = query_desc.astype(np.float64)
         query_desc = query_desc / np.linalg.norm(query_desc)
 
         scores = self.db_global_descs @ query_desc
@@ -175,40 +214,59 @@ class Localizer:
         top_indices = np.argsort(-scores)[:top_k]
         return [self.db_names[i] for i in top_indices]
 
+    # MARK: - matching (hloc.match_features의 FeaturePairsDataset을 인메모리로 재현)
+
+    def _match_candidate(self, query_pred: dict, candidate_name: str) -> np.ndarray:
+        with h5py.File(self.features_path, "r", libver="latest") as fd:
+            grp = fd[candidate_name]
+            ref_keypoints = grp["keypoints"].__array__().astype(np.float32)
+            ref_descriptors = grp["descriptors"].__array__().astype(np.float32)
+            ref_scores = grp["scores"].__array__().astype(np.float32)
+            ref_image_size = grp["image_size"].__array__()
+
+        qw, qh = query_pred["image_size"]
+        rw, rh = ref_image_size
+
+        data = {
+            "keypoints0": torch.from_numpy(query_pred["keypoints"].astype(np.float32))[None],
+            "descriptors0": torch.from_numpy(query_pred["descriptors"].astype(np.float32))[None],
+            "scores0": torch.from_numpy(query_pred["scores"].astype(np.float32))[None],
+            "image0": torch.empty((1, 1, int(qh), int(qw))),
+            "keypoints1": torch.from_numpy(ref_keypoints)[None],
+            "descriptors1": torch.from_numpy(ref_descriptors)[None],
+            "scores1": torch.from_numpy(ref_scores)[None],
+            "image1": torch.empty((1, 1, int(rh), int(rw))),
+        }
+        data = {k: v.to(self.device) for k, v in data.items()}
+
+        with torch.no_grad():
+            pred = self.lightglue_model(data)
+        return pred["matches0"][0].cpu().numpy()
+
     def _gather_correspondences(
-        self,
-        query_name: str,
-        candidates: list[str],
-        query_features_path: Path,
-        match_path: Path,
+        self, query_pred: dict, candidates: list[str]
     ) -> tuple[np.ndarray, np.ndarray]:
         points2d: list[np.ndarray] = []
         points3d: list[np.ndarray] = []
+        kpq = query_pred["keypoints"]
 
-        with h5py.File(query_features_path, "r", libver="latest") as qf, \
-             h5py.File(match_path, "r", libver="latest") as mf:
-            kpq = qf[query_name]["keypoints"].__array__()
+        for candidate in candidates:
+            candidate_points_3d = self.kp_to_3d_db.get(candidate)
+            if candidate_points_3d is None:
+                continue
 
-            for candidate in candidates:
-                pair = names_to_pair(query_name, candidate)
-                if pair not in mf:
+            matches = self._match_candidate(query_pred, candidate)
+            valid = matches > -1
+            if not np.any(valid):
+                continue
+
+            for query_idx in np.nonzero(valid)[0]:
+                ref_idx = int(matches[query_idx])
+                p3d = candidate_points_3d[ref_idx]
+                if p3d is None:
                     continue
-                matches = mf[pair]["matches0"].__array__()
-                valid = matches > -1
-                if not np.any(valid):
-                    continue
-
-                candidate_points_3d = self.kp_to_3d_db.get(candidate)
-                if candidate_points_3d is None:
-                    continue
-
-                for query_idx in np.nonzero(valid)[0]:
-                    ref_idx = int(matches[query_idx])
-                    p3d = candidate_points_3d[ref_idx]
-                    if p3d is None:
-                        continue
-                    points2d.append(kpq[query_idx].astype(np.float64))
-                    points3d.append(np.asarray(p3d, dtype=np.float64))
+                points2d.append(kpq[query_idx].astype(np.float64))
+                points3d.append(np.asarray(p3d, dtype=np.float64))
 
         if not points2d:
             return np.empty((0, 2)), np.empty((0, 3))

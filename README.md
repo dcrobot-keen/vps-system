@@ -71,8 +71,8 @@ dc-vps/
 - [x] 프로젝트 스캐폴딩
 - [x] ios-capture 앱 구현 (Xcode 프로젝트 포함, 실기기 빌드·스캔까지 검증 완료)
 - [x] pipeline DB 빌드 스크립트 구현/검증 (실제 스캔 데이터로 end-to-end 검증 완료)
-- [x] server FastAPI 쿼리 서버 구현 (`/localize` 구현 + 실데이터 검증 완료, 요청당 모델
-      재로딩으로 느림 — server/README.md "알려진 한계" 참고)
+- [x] server FastAPI 쿼리 서버 구현 (`/localize` 구현 + 실데이터/실사진 검증 완료,
+      모델 캐싱으로 쿼리당 30초~1분 → 10~20초대로 개선)
 - [ ] Nav2/robot_localization 통합 (`ros2_ws/src/dc_vps_bridge/` — macOS pixi/RoboStack로
       ROS2 Humble 설치 후 colcon build/ros2 launch까지 실제 검증 완료. 로봇/카메라/Nav2
       스택이 없어 실제 이미지 토픽으로 VPS 쿼리하는 end-to-end 흐름은 미검증)

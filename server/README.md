@@ -42,16 +42,23 @@ curl -X POST http://localhost:8000/localize \
 
 ## 구현 메모
 
-`app/localize.py`의 `Localizer.localize()`: 쿼리 이미지 1장을 임시 폴더에 써서
-`hloc.extract_features.main()`을 그대로 호출해 SuperPoint/NetVLAD를 추출한다(전처리/
-후처리 로직을 pipeline의 db_build.py와 동일하게 재사용하기 위함). NetVLAD 전역
-디스크립터로 DB 후보 top-k(`RETRIEVAL_TOP_K`)를 코사인 유사도로 뽑고, LightGlue로
-매칭한 뒤 매칭된 DB keypoint의 3D 좌표(`kp_to_3d_db.pkl`)를 모아 PnP+RANSAC
-(`pycolmap.estimate_and_refine_absolute_pose`)으로 pose를 추정한다.
+`app/localize.py`의 `Localizer.__init__`에서 SuperPoint/NetVLAD/LightGlue 모델을
+**서버 시작 시 한 번만** 로드해서 인스턴스에 캐싱해둔다. `localize()`는 이미 로드된
+모델로 쿼리 이미지를 바로 처리한다 — 전처리(리사이즈/grayscale)와 후처리(keypoint를
+원본 해상도로 역스케일)는 `hloc.extract_features.ImageDataset`/`main()`의 로직을
+인메모리로 그대로 옮겨왔고, 매칭은 `hloc.match_features.FeaturePairsDataset`의 텐서
+포맷을 그대로 재현해서 캐싱된 LightGlue 모델에 직접 넣는다. DB 빌드 때와 동일한
+좌표 변환이라 좌표계가 어긋나지 않는다 (실제 스캔 프레임 재입력 시 ground-truth와
+오차 수십 마이크로미터 수준으로 일치하는 것으로 검증함).
 
-현재는 요청마다 SuperPoint/NetVLAD/LightGlue 모델 가중치를 새로 로드한다(요청당 수 초
-추가) — 실시간 로봇 루프에 붙이기 전에는 최적화 우선순위가 아니라고 판단해 일단 단순하게
-구현했다. 필요해지면 `Localizer.__init__`에서 모델을 한 번만 로드하도록 바꿀 수 있다.
+NetVLAD 전역 디스크립터로 DB 후보 top-k(`RETRIEVAL_TOP_K`)를 코사인 유사도로 뽑고,
+LightGlue로 매칭한 뒤 매칭된 DB keypoint의 3D 좌표(`kp_to_3d_db.pkl`)를 모아
+PnP+RANSAC(`pycolmap.estimate_and_refine_absolute_pose`)으로 pose를 추정한다.
+
+**이전엔 요청마다 모델을 새로 로드해서 쿼리 1건에 30초~1분 걸렸는데, 캐싱 후엔
+서버 시작 시 모델 로딩에 ~5초, 이후 쿼리는 건당 10~20초대로 줄었다** (2026-08-17,
+Apple Silicon Mac, CPU 추론 기준). 여전히 실시간이라 부르긴 어렵지만 로봇 루프에
+붙이기엔 훨씬 현실적인 수준. 더 빠르게 하려면 GPU 추론이나 배치 처리가 다음 단계.
 
 `SUPERPOINT_CONF`/`RETRIEVAL_CONF`/`RETRIEVAL_TOP_K`는 `pipeline/dc_vps_pipeline/config.py`와
 반드시 같은 값을 써야 한다 (DB가 그 설정으로 빌드됐기 때문). pipeline과 server가 별도
