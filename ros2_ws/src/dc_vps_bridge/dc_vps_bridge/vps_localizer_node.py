@@ -2,8 +2,16 @@
 6DoF pose를 받아오고, robot_localization EKF 입력 또는 AMCL /initialpose로 쓸 수 있는
 PoseWithCovarianceStamped로 퍼블리시하는 브리지 노드.
 
-- hloc world 좌표계 pose를 map 프레임으로 옮기기 위해 calibration_translation/
-  calibration_quaternion 파라미터(최초 스캔 시 origin 캘리브레이션 결과)를 적용한다.
+- hloc world 좌표계 pose를 map 프레임으로 옮기기 위해 `scan_basemap_frame`(기본
+  "scan_basemap") -> `map_frame`(기본 "map") ROS tf를 매번 lookup해서 적용한다.
+  이 tf는 pipeline/export_pointcloud.py로 뽑은 포인트클라우드를
+  https://github.com/dcrobot-keen/scan-to-map-studio 에 넣어 로봇 자체 SLAM 지도와
+  ICP 정합한 결과(scripts/export_tf.py 출력)를 그대로 쓰면 된다 — 같은 스캔에서
+  나온 world 좌표계라 별도 변환 없이 바로 맞는다.
+- 그 tf가 아직 안 올라와 있으면(스캔-투-맵 파이프라인을 아직 안 돌렸거나, 로봇이
+  없어서 테스트 중인 경우) `calibration_translation`/`calibration_quaternion`
+  파라미터(기본 identity)로 대체한다 — tf 없이도 노드가 죽거나 멈추지 않고 계속
+  동작하게 하기 위한 폴백.
 - VPS 서버 쿼리는 느리므로(모델 로딩 포함 요청당 수십 초~1분, server/README.md 참고)
   카메라 프레임마다 호출하지 않고 query_period_sec 주기로만 최신 프레임을 사용한다.
 """
@@ -16,8 +24,13 @@ import rclpy
 import requests
 from cv_bridge import CvBridge
 from geometry_msgs.msg import PoseWithCovarianceStamped
+from rclpy.duration import Duration
 from rclpy.node import Node
+from rclpy.time import Time
 from sensor_msgs.msg import CameraInfo, Image
+from tf2_ros import ConnectivityException, ExtrapolationException, LookupException
+from tf2_ros.buffer import Buffer
+from tf2_ros.transform_listener import TransformListener
 
 
 def quaternion_to_matrix(q: np.ndarray) -> np.ndarray:
@@ -71,19 +84,25 @@ class VPSLocalizerNode(Node):
         self.declare_parameter("camera_info_topic", "camera_info")
         self.declare_parameter("pose_topic", "vps_pose")
         self.declare_parameter("map_frame", "map")
+        self.declare_parameter("scan_basemap_frame", "scan_basemap")
+        self.declare_parameter("tf_lookup_timeout_sec", 0.5)
         self.declare_parameter("query_period_sec", 2.0)
         self.declare_parameter("jpeg_quality", 85)
         self.declare_parameter("request_timeout_sec", 30.0)
         self.declare_parameter("position_stddev_m", 0.05)
         self.declare_parameter("orientation_stddev_deg", 5.0)
-        # hloc world 좌표계 -> map 프레임 변환 (최초 스캔 시 origin 캘리브레이션 결과).
-        # 기본값은 identity(=hloc world와 map이 동일 원점/방향)이므로 실제 로봇에 붙일 때
-        # 반드시 캘리브레이션한 값으로 override 해야 한다.
+        # scan_basemap -> map tf가 없을 때(scan-to-map-studio 정합을 아직 안 했거나
+        # 로봇 없이 테스트 중일 때)의 폴백. 기본값은 identity(=hloc world와 map이
+        # 동일 원점/방향).
         self.declare_parameter("calibration_translation", [0.0, 0.0, 0.0])
         self.declare_parameter("calibration_quaternion", [0.0, 0.0, 0.0, 1.0])
 
         self.server_url = self.get_parameter("server_url").value
         self.map_frame = self.get_parameter("map_frame").value
+        self.scan_basemap_frame = self.get_parameter("scan_basemap_frame").value
+        self.tf_lookup_timeout = Duration(
+            seconds=float(self.get_parameter("tf_lookup_timeout_sec").value)
+        )
         self.jpeg_quality = int(self.get_parameter("jpeg_quality").value)
         self.request_timeout_sec = float(self.get_parameter("request_timeout_sec").value)
 
@@ -95,8 +114,11 @@ class VPSLocalizerNode(Node):
 
         calib_t = self.get_parameter("calibration_translation").value
         calib_q = self.get_parameter("calibration_quaternion").value
-        self.calib_translation = np.array(calib_t, dtype=np.float64)
-        self.calib_rotation = quaternion_to_matrix(np.array(calib_q, dtype=np.float64))
+        self.fallback_translation = np.array(calib_t, dtype=np.float64)
+        self.fallback_rotation = quaternion_to_matrix(np.array(calib_q, dtype=np.float64))
+
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
 
         self.bridge = CvBridge()
         self.latest_image = None
@@ -183,13 +205,37 @@ class VPSLocalizerNode(Node):
         result = response.json()
         self._publish_pose(result)
 
+    def _get_calibration(self) -> tuple[np.ndarray, np.ndarray]:
+        """scan_basemap -> map 변환을 tf에서 lookup한다. 실패하면 정적 파라미터로 대체한다."""
+        try:
+            transform = self.tf_buffer.lookup_transform(
+                self.map_frame,
+                self.scan_basemap_frame,
+                Time(),
+                timeout=self.tf_lookup_timeout,
+            )
+        except (LookupException, ConnectivityException, ExtrapolationException) as error:
+            self.get_logger().warn(
+                f"'{self.scan_basemap_frame}' -> '{self.map_frame}' tf를 찾을 수 없어 "
+                f"calibration_translation/quaternion 파라미터로 대체함: {error}",
+                throttle_duration_sec=10,
+            )
+            return self.fallback_translation, self.fallback_rotation
+
+        t = transform.transform.translation
+        q = transform.transform.rotation
+        translation = np.array([t.x, t.y, t.z], dtype=np.float64)
+        rotation = quaternion_to_matrix(np.array([q.x, q.y, q.z, q.w], dtype=np.float64))
+        return translation, rotation
+
     def _publish_pose(self, result: dict) -> None:
         t_world_cam = np.array(result["translation"], dtype=np.float64)
         r_world_cam = quaternion_to_matrix(np.array(result["quaternion"], dtype=np.float64))
+        calib_translation, calib_rotation = self._get_calibration()
 
         # T_map_from_cam = T_map_from_world * T_world_from_cam
-        r_map_cam = self.calib_rotation @ r_world_cam
-        t_map_cam = self.calib_rotation @ t_world_cam + self.calib_translation
+        r_map_cam = calib_rotation @ r_world_cam
+        t_map_cam = calib_rotation @ t_world_cam + calib_translation
         q_map_cam = matrix_to_quaternion(r_map_cam)
 
         msg = PoseWithCovarianceStamped()

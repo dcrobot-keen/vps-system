@@ -47,9 +47,10 @@ fusion하거나, amcl `/initialpose`로 remap해서 재측위에 사용.
 github.com/dcrobot-keen/scan-to-map-studio에 넣으면(천장 제거 → 2D occupancy grid →
 로봇 SLAM 지도와 ICP 정합) `scan_basemap <-> map` ROS tf가 나온다 — 같은 world
 좌표계를 공유하므로 이 tf를 VPS pose에도 그대로 적용해서 hloc world와 occupancy
-grid 좌표계를 정합한다 (로봇이 없어 수동으로만 하던 origin 캘리브레이션의 대체 경로,
-export_pointcloud.py → scan-to-map-studio 파이프라인 자체는 실데이터로 검증 완료,
-dc_vps_bridge가 이 tf를 자동으로 소비하도록 하는 건 아직 미완료).
+grid 좌표계를 정합한다 (로봇이 없어 수동으로만 하던 origin 캘리브레이션의 대체 경로).
+dc_vps_bridge가 이 tf를 tf2_ros로 자동 lookup해서 적용하고, tf가 없으면 수동
+캘리브레이션 파라미터로 폴백한다 — 둘 다 실제 static_transform_publisher로 검증
+완료. 로봇의 실제 SLAM 지도로 두 파이프라인을 엮어서 끝까지 돌려본 적은 아직 없음.
 ```
 
 ## 폴더 구조
@@ -81,6 +82,6 @@ dc-vps/
 - [x] pipeline DB 빌드 스크립트 구현/검증 (실제 스캔 데이터로 end-to-end 검증 완료)
 - [x] server FastAPI 쿼리 서버 구현 (`/localize` 구현 + 실데이터/실사진 검증 완료,
       모델 캐싱으로 쿼리당 30초~1분 → 10~20초대로 개선)
-- [ ] Nav2/robot_localization 통합 (`ros2_ws/src/dc_vps_bridge/` — macOS pixi/RoboStack로
-      ROS2 Humble 설치 후 colcon build/ros2 launch까지 실제 검증 완료. 로봇/카메라/Nav2
+- [ ] Nav2/robot_localization 통합 (`ros2_ws/src/dc_vps_bridge/` — colcon build/ros2 launch,
+      scan-to-map-studio tf 자동 lookup+fallback 로직까지 실제 검증 완료. 로봇/카메라/Nav2
       스택이 없어 실제 이미지 토픽으로 VPS 쿼리하는 end-to-end 흐름은 미검증)

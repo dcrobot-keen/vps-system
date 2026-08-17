@@ -5,11 +5,16 @@ vps_localizer_node:
     camera_info_topic: "camera_info"
     pose_topic: "vps_pose"
     map_frame: "map"
+    # scan-to-map-studio(scripts/export_tf.py)가 publish하는 static tf의 frame_id.
+    # 이 tf가 있으면 자동으로 map 프레임 변환에 쓰고, 없으면 아래 fallback 값을 쓴다.
+    scan_basemap_frame: "scan_basemap"
+    tf_lookup_timeout_sec: 0.5
     query_period_sec: 2.0
     jpeg_quality: 85
     request_timeout_sec: 30.0
     position_stddev_m: 0.05
     orientation_stddev_deg: 5.0
-    # 최초 스캔 시 origin 캘리브레이션 결과로 교체할 것 (README "map 프레임 캘리브레이션" 참고)
+    # scan_basemap -> map tf가 없을 때(fallback)만 쓰인다. README "map 프레임
+    # 캘리브레이션" 참고 — scan-to-map-studio 정합을 이미 했다면 이 값은 무시된다.
     calibration_translation: [0.0, 0.0, 0.0]
     calibration_quaternion: [0.0, 0.0, 0.0, 1.0]
