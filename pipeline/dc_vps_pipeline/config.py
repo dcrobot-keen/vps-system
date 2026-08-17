@@ -20,3 +20,7 @@ MIN_DEPTH_METERS = 0.0
 SUPERPOINT_CONF = "superpoint_inloc"  # max_keypoints=4096, nms_radius=4, resize_max=1600
 RETRIEVAL_CONF = "netvlad"
 RETRIEVAL_TOP_K = 20
+
+# server/app/localize.py: PnP+RANSAC inlier가 이 값 미만이면 로컬라이제이션 실패로 처리
+MATCHER_CONF = "superpoint+lightglue"
+MIN_INLIERS = 12

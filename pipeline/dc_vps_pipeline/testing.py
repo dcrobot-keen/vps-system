@@ -1,8 +1,13 @@
 """테스트용 합성 scan_<name>/ 폴더 생성기.
 
 실제 iPhone 캡처(ios-capture) 없이 db_build.py의 hloc 추출 -> backproject
-파이프라인을 end-to-end로 검증하기 위한 fixture. RGB는 SuperPoint가 코너를
-안정적으로 검출하도록 체커보드 패턴을 사용한다.
+파이프라인, 그리고 server의 쿼리 로컬라이제이션(SuperPoint/NetVLAD/LightGlue/PnP)을
+end-to-end로 검증하기 위한 fixture. dc_vps_pipeline 패키지 안에 두어 pipeline과
+server 양쪽 테스트(각자의 venv에 editable install)에서 재사용한다.
+
+RGB는 SuperPoint가 코너를 안정적으로 검출하면서도, 체커보드처럼 주기적인 패턴이
+LightGlue 매칭에서 반복 대응(반대편 대칭 코너로 잘못 매칭)을 일으키지 않도록
+시드 고정된 랜덤 블록 텍스처를 사용한다.
 
 각 프레임은 depth/confidence를 상수값으로 채운다. camera_transform이 identity인
 프레임에서는 backproject된 3D 포인트의 world z 좌표가 그대로 depth 값과 같아야
@@ -12,7 +17,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -26,6 +31,10 @@ from dc_vps_pipeline import config
 RGB_SIZE = (config.RGB_WIDTH, config.RGB_HEIGHT)
 DEPTH_SIZE = (config.DEPTH_WIDTH, config.DEPTH_HEIGHT)
 
+# 쿼리 쪽 테스트(server)에서 pycolmap.Camera를 동일하게 구성할 수 있도록 노출.
+FX = FY = 1000.0
+CX, CY = RGB_SIZE[0] / 2, RGB_SIZE[1] / 2
+
 
 @dataclass
 class FrameSpec:
@@ -36,11 +45,13 @@ class FrameSpec:
     translation: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
 
-def _checkerboard_rgb(square: int = 40) -> np.ndarray:
+def synthetic_rgb_texture(square: int = 48, seed: int = 42) -> np.ndarray:
+    """시드 고정 랜덤 블록 텍스처. square는 RGB_SIZE를 나누어떨어뜨려야 한다."""
     w, h = RGB_SIZE
-    xx, yy = np.meshgrid(np.arange(w), np.arange(h))
-    pattern = (((xx // square) + (yy // square)) % 2) * 255
-    return np.stack([pattern] * 3, axis=-1).astype(np.uint8)
+    rng = np.random.RandomState(seed)
+    blocks = rng.randint(0, 256, size=(h // square, w // square)).astype(np.uint8)
+    pattern = np.kron(blocks, np.ones((square, square), dtype=np.uint8))
+    return np.stack([pattern] * 3, axis=-1)
 
 
 def write_synthetic_scan(scan_dir: Path, frame_specs: list[FrameSpec]) -> None:
@@ -50,10 +61,9 @@ def write_synthetic_scan(scan_dir: Path, frame_specs: list[FrameSpec]) -> None:
     for d in (rgb_dir, depth_dir, poses_dir):
         d.mkdir(parents=True, exist_ok=True)
 
-    rgb_array = _checkerboard_rgb()
+    rgb_array = synthetic_rgb_texture()
 
-    fx = fy = 1000.0
-    cx, cy = RGB_SIZE[0] / 2, RGB_SIZE[1] / 2
+    fx, fy, cx, cy = FX, FY, CX, CY
 
     lines = []
     for spec in frame_specs:

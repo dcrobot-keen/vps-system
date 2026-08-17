@@ -1,6 +1,6 @@
 """db_build.py end-to-end 회귀 테스트.
 
-실 iPhone 스캔 데이터 없이, 합성 scan(synthetic_scan.py)으로 실제 hloc
+실 iPhone 스캔 데이터 없이, 합성 scan(dc_vps_pipeline.testing)으로 실제 hloc
 SuperPoint/NetVLAD 추출 + depth backproject 전체 경로를 검증한다. GPU/torch로
 실제 모델을 돌리므로 다소 느리다(수십 초).
 """
@@ -13,8 +13,7 @@ from pathlib import Path
 import pytest
 
 from dc_vps_pipeline.db_build import build_db
-
-from .synthetic_scan import FrameSpec, write_synthetic_scan
+from dc_vps_pipeline.testing import FrameSpec, write_synthetic_scan
 
 VALID_DEPTH = 2.0
 OUT_OF_RANGE_DEPTH = 10.0  # config.MAX_DEPTH_METERS(5.0m) 초과

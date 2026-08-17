@@ -10,7 +10,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+import pycolmap
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 
 from .localize import Localizer
 
@@ -26,9 +27,24 @@ def health() -> dict:
 
 
 @app.post("/localize")
-async def localize(image: UploadFile = File(...)) -> dict:
+async def localize(
+    image: UploadFile = File(...),
+    fx: float = Form(...),
+    fy: float = Form(...),
+    cx: float = Form(...),
+    cy: float = Form(...),
+    width: int = Form(...),
+    height: int = Form(...),
+) -> dict:
+    """쿼리 카메라 intrinsics(fx/fy/cx/cy, 쿼리 이미지 해상도 기준)는 호출자가 함께 보내야 한다.
+
+    DB를 만든 스캔 카메라와 쿼리 카메라(로봇/iPhone)의 렌즈/해상도가 다를 수 있어
+    intrinsics를 서버가 추정하지 않는다.
+    """
     image_bytes = await image.read()
-    result = localizer.localize(image_bytes)
+    camera = pycolmap.Camera(model="PINHOLE", width=width, height=height, params=[fx, fy, cx, cy])
+
+    result = localizer.localize(image_bytes, camera)
 
     if not result.success:
         raise HTTPException(status_code=422, detail=result.reason or "localization failed")

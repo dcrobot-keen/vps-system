@@ -40,12 +40,15 @@ python -m dc_vps_pipeline.db_build <scan_dir> <output_dir>
 
 ## 테스트
 
-실 iPhone 스캔 데이터(ios-capture 앱, macOS 필요) 없이도 `tests/synthetic_scan.py`가
-체커보드 패턴 RGB + 상수 depth/confidence로 scan_<name>/ 폴더를 합성해서
+실 iPhone 스캔 데이터(ios-capture 앱, macOS 필요) 없이도 `dc_vps_pipeline/testing.py`가
+랜덤 블록 텍스처 RGB + 상수 depth/confidence로 scan_<name>/ 폴더를 합성해서
 db_build.py 전체 경로(hloc SuperPoint/NetVLAD 추출 -> depth lookup -> backproject
 -> 필터링)를 실제로 검증한다. camera_transform이 identity인 프레임은 backproject된
 포인트의 world z가 depth 값과 정확히 같아야 한다는 성질을 이용해 backproject
 정확성을, confidence=0/depth=10m 프레임은 필터링 로직을 검증한다.
+
+`dc_vps_pipeline/testing.py`는 패키지 안에 있어 `server/`의 로컬라이제이션 테스트도
+`pip install -e ../pipeline`로 동일하게 재사용한다.
 
 ```
 pip install -r requirements-dev.txt

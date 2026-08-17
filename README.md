@@ -69,5 +69,6 @@ dc-vps/
 - [ ] ios-capture 앱 구현 (Xcode 프로젝트로 변환 필요, macOS에서 진행 중)
 - [x] pipeline DB 빌드 스크립트 구현/검증 (합성 scan 기반 자동화 테스트로 회귀 검증,
       `pipeline/tests/`. 실 iPhone 데이터로는 아직 미검증)
-- [ ] server FastAPI 쿼리 서버 구현
+- [x] server FastAPI 쿼리 서버 구현 (SuperPoint/NetVLAD/LightGlue/PnP, `server/tests/`로
+      합성 DB 기반 회귀 검증. 실 카메라/실 DB 조합으로는 아직 미검증)
 - [ ] Nav2/robot_localization 통합
