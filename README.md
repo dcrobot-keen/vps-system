@@ -85,3 +85,8 @@ dc-vps/
 - [ ] Nav2/robot_localization 통합 (`ros2_ws/src/dc_vps_bridge/` — colcon build/ros2 launch,
       scan-to-map-studio tf 자동 lookup+fallback 로직까지 실제 검증 완료. 로봇/카메라/Nav2
       스택이 없어 실제 이미지 토픽으로 VPS 쿼리하는 end-to-end 흐름은 미검증)
+- [x] scan-to-map-studio 연동 오케스트레이터 (`pipeline/dc_vps_pipeline/orchestrate.py`) —
+      스캔 폴더 하나로 hloc DB + 포인트클라우드 + (scan-to-map-studio 체크아웃이 있으면)
+      2D 지도/report.html까지 한 명령으로. scan-to-map-studio 쪽에 `--ply` 입력 옵션을
+      추가해야 동작하는데(원래 `.usdz`만 받음), 그 변경까지 포함해서 실제 스캔 데이터로
+      전체 체인 end-to-end 검증 완료

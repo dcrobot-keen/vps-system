@@ -53,6 +53,29 @@ nav2 pgm/yaml 지도가 나오는 것까지 확인함 (2026-08-17).
 `_convert_to_zup`과 동일한 `(x, y, z) -> (x, -z, y)`)로 바꿔서 저장한다.
 `--voxel-size`(기본 3cm)로 겹치는 프레임 간 중복 포인트를 한 점으로 합친다.
 
+## 오케스트레이터 — 스캔 하나로 VPS DB + 2D 지도 한 번에
+
+```
+python -m dc_vps_pipeline.orchestrate <scan_dir> <output_dir> \
+    --scan-to-map-studio-dir <scan-to-map-studio 체크아웃 경로> \
+    [--robot-map <robot_map_prefix>] [--project-name <name>]
+```
+
+`db_build.py`(hloc DB) + `export_pointcloud.py`(포인트클라우드)를 실행한 뒤,
+`--scan-to-map-studio-dir`를 줬으면 scan-to-map-studio의 `scripts/studio.py new` /
+`process --ply`를 그 프로젝트 자체 venv(`<dir>/.venv/bin/python`, `--scan-to-map-studio-python`으로
+override 가능)로 subprocess 호출해서 report.html/2D 지도/(있으면) 로봇 지도 정합까지
+이어서 만든다. `--scan-to-map-studio-dir`를 생략하면 hloc DB + `base_map.ply`까지만 생성.
+
+**scan-to-map-studio 쪽에 `--ply` 입력 옵션이 있어야 한다** — 원래 `.usdz`만 받던
+`scripts/studio.py process`/`studio/pipeline.py`의 `run_pipeline()`에 이미 만들어진
+포인트클라우드를 바로 받는 경로를 추가했다 (usdz->ply 변환 단계만 건너뛰고 나머지는
+동일). 실제 스캔 데이터로 `orchestrate.py` 전체(hloc DB 빌드 → export_pointcloud →
+scan-to-map-studio `new`+`process --ply`)를 한 명령으로 돌려서 hloc DB
+(`kp_to_3d_db.pkl` 등)와 scan-to-map-studio project(`report.html`, `viewer.html`,
+`overlay.glb`, `map/map.pgm`+`.yaml` 등)가 둘 다 정상 생성되는 것까지 검증함
+(2026-08-17).
+
 ## 정합 정책
 
 `dc_vps_pipeline/geometry.py`, `dc_vps_pipeline/config.py` 참고. 요약:
