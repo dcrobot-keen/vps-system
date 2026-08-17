@@ -28,3 +28,7 @@ RETRIEVAL_TOP_K = 20
 
 # server 전용 (pipeline은 매칭을 안 하지만, hloc 관련 설정을 한곳에 모아두기 위해 여기 둔다)
 MATCHER_CONF = "superpoint+lightglue"
+
+# export_pointcloud.py: 프레임 간 겹치는 depth 포인트를 한 점으로 합칠 복셀 크기.
+# scan-to-map-studio의 기본 occupancy grid 해상도(5cm/cell)보다 촘촘하게 잡았다.
+POINTCLOUD_VOXEL_SIZE_METERS = 0.03

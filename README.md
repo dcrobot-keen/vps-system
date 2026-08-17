@@ -41,7 +41,15 @@ scan 폴더
 로봇 카메라 토픽을 주기적으로 서버에 쿼리 → 리턴된 pose를 map 프레임으로 캘리브레이션
 변환 → PoseWithCovarianceStamped 퍼블리시. robot_localization EKF의 한 입력 소스로
 fusion하거나, amcl `/initialpose`로 remap해서 재측위에 사용.
-hloc world 좌표계와 occupancy grid 좌표계는 최초 스캔 시 origin 캘리브레이션으로 정합한다.
+
+[map 프레임 캘리브레이션] (pipeline/export_pointcloud.py + scan-to-map-studio, 외부 저장소)
+같은 스캔에서 뽑은 world-frame 포인트클라우드를 별도 프로젝트
+github.com/dcrobot-keen/scan-to-map-studio에 넣으면(천장 제거 → 2D occupancy grid →
+로봇 SLAM 지도와 ICP 정합) `scan_basemap <-> map` ROS tf가 나온다 — 같은 world
+좌표계를 공유하므로 이 tf를 VPS pose에도 그대로 적용해서 hloc world와 occupancy
+grid 좌표계를 정합한다 (로봇이 없어 수동으로만 하던 origin 캘리브레이션의 대체 경로,
+export_pointcloud.py → scan-to-map-studio 파이프라인 자체는 실데이터로 검증 완료,
+dc_vps_bridge가 이 tf를 자동으로 소비하도록 하는 건 아직 미완료).
 ```
 
 ## 폴더 구조

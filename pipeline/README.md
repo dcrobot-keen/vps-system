@@ -29,6 +29,30 @@ python -m dc_vps_pipeline.db_build <scan_dir> <output_dir>
 `<output_dir>`에 SuperPoint/NetVLAD feature(h5)와 `kp_to_3d_db.pkl`(keypoint별 world 3D 좌표)이
 생성된다. 이 결과물을 `server/`의 `DC_VPS_DB_DIR`로 지정해서 로컬라이제이션 서버에서 사용한다.
 
+## 포인트클라우드 export (scan-to-map-studio 연동)
+
+```
+python -m dc_vps_pipeline.export_pointcloud <scan_dir> <output.ply> [--voxel-size 0.03]
+```
+
+같은 스캔의 depth 전체를 backproject해서 world-frame 포인트클라우드(PLY)로 내보낸다.
+`db_build.py`가 SuperPoint keypoint 위치만 3D로 바꾸는 것과 달리 이건 밀집
+포인트클라우드다. 목적: [scan-to-map-studio](https://github.com/dcrobot-keen/scan-to-map-studio)
+(iPhone LiDAR 스캔 → 천장 제거 → 2D occupancy grid → 로봇 SLAM 지도와 ICP 정합 →
+ROS tf 출력 스튜디오)의 `scripts/remove_ceiling.py` 입력으로 바로 쓸 수 있게 하기 위함.
+
+같은 스캔 세션에서 뽑은 포인트클라우드라 hloc VPS DB(`db_build.py`)와 world 좌표계
+원점/방향이 동일하다 — 그래서 scan-to-map-studio가 ICP로 계산해주는
+`scan_basemap <-> map` ROS tf를 VPS pose에도 그대로 적용할 수 있다 (로봇/카메라가
+없어서 수동으로만 하던 `ros2_ws/src/dc_vps_bridge`의 map 프레임 캘리브레이션을
+대체할 수 있는 경로). 검증: 실제 스캔 데이터를 이 명령으로 export → scan-to-map-studio의
+`remove_ceiling.py` → `rasterize_base_map.py`까지 수정 없이 그대로 통과해서 유효한
+nav2 pgm/yaml 지도가 나오는 것까지 확인함 (2026-08-17).
+
+좌표계 변환: ARKit world 좌표계(Y-up)를 scan-to-map-studio 관례(Z-up, `studio/usdz_import.py`의
+`_convert_to_zup`과 동일한 `(x, y, z) -> (x, -z, y)`)로 바꿔서 저장한다.
+`--voxel-size`(기본 3cm)로 겹치는 프레임 간 중복 포인트를 한 점으로 합친다.
+
 ## 정합 정책
 
 `dc_vps_pipeline/geometry.py`, `dc_vps_pipeline/config.py` 참고. 요약:
