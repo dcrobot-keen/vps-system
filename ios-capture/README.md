@@ -3,8 +3,35 @@
 iPhone LiDAR(12 Pro 이상)에서 RGB + LiDAR depth + confidence + ARKit pose(6DoF) +
 camera intrinsics를 프레임 단위로 동기화해서 저장하는 ARKit 캡처 앱.
 
-macOS + Xcode가 필요하다. 이 폴더의 `ScanSessionManager.swift`를 새 Xcode
-"App" 프로젝트(iOS, Swift, ARKit)에 추가해서 사용한다.
+macOS + Xcode가 필요하다. `vps.xcodeproj`가 이 폴더에 이미 있으니 그냥 열면 된다
+(별도 프로젝트 생성/파일 드래그 불필요 — 실기기에서 빌드·설치까지 확인된 상태).
+
+## 열기 & 실행
+
+1. `ios-capture/vps.xcodeproj`를 Xcode로 연다.
+2. 타겟 → **Signing & Capabilities**: 본인 Apple ID/팀 선택 (ARKit은 시뮬레이터에서
+   동작하지 않으므로 실기기 필요).
+3. LiDAR 탑재 기기(iPhone 12 Pro 이상 Pro 라인, iPad Pro)를 연결하고 빌드 & 실행.
+
+소스 파일은 `vps/` 그룹 아래에 있다:
+- `DCVPSCaptureApp.swift` (`@main` App 진입점)
+- `ContentView.swift` (카메라 프리뷰 + 시작/정지/내보내기 UI)
+- `ScanSessionManager.swift` (ARSession 캡처 로직) — `import Combine` 필요
+  (`@Published`/`ObservableObject`용, 빌드 시 실제로 필요했던 import)
+- `ZipArchiver.swift` (외부 의존성 없는 zip 내보내기) — `Data`의
+  `withUnsafeBytes(of:)` 호출이 다른 오버로드와 모호해져서 `Swift.withUnsafeBytes`로
+  명시적으로 한정해야 컴파일된다
+
+앱 UI: 세션 이름을 입력하고 "시작"을 누르면 캡처가 시작되고, "정지"를 누르면
+`Documents/scan_<name>/`에 저장이 끝난다. "내보내기"를 누르면 해당 폴더를 zip으로
+묶어 공유 시트(AirDrop/파일 앱/서버 업로드 등)를 띄운다.
+
+## 원래 별도 저장소였음
+
+이 프로젝트는 원래 `~/code/vps01-app/vps`에 별도 git 저장소(GitHub:
+`dcrobot-keen/vps-scan-app`)로 만들어졌다가, vps-system 모노레포와 소스가
+갈라지는 걸 막기 위해 이 폴더로 합쳐졌다. 앞으로 앱 수정은 여기서 하고, 별도
+저장소는 필요 없으면 정리해도 된다.
 
 ## 출력 폴더 구조
 
@@ -42,9 +69,12 @@ scan_<name>/
 
 ## TODO
 
-- [ ] Xcode 프로젝트로 변환 (App target, ARKit + Photos/FileSystem 권한)
-- [ ] JPEG 인코딩 + 파일 저장 구현 (`saveRGB`)
-- [ ] depth/confidence raw 저장 구현 (`saveDepth`)
-- [ ] 이동거리/시간 기반 스로틀링 구현 (`shouldCapture`)
-- [ ] manifest.json 작성 (세션 시작/종료 시각, 프레임 수, 기기 모델)
-- [ ] zip export + 공유 UI
+- [x] Xcode 프로젝트로 변환 (`vps.xcodeproj`, 저장소에 포함됨)
+- [x] JPEG 인코딩 + 파일 저장 구현 (`saveRGB`)
+- [x] depth/confidence raw 저장 구현 (`saveDepth`) — confidence는 pipeline의
+      `load_depth_raw`(float32 전용)와 맞추기 위해 float32로 변환 저장한다.
+- [x] 이동거리/시간 기반 스로틀링 구현 (`shouldCapture`)
+- [x] manifest.json 작성 (세션 시작/종료 시각, 프레임 수, 기기 모델)
+- [x] zip export + 공유 UI (`ZipArchiver.swift`, `ContentView.swift`)
+- [x] 실기기(LiDAR 탑재) 빌드 검증 — 실제 iPhone에 설치해서 스캔 완료, pipeline
+      DB 빌드까지 end-to-end 검증됨

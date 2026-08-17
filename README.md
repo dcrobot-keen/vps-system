@@ -30,15 +30,17 @@ scan 폴더
   → keypoint별 3D 좌표 테이블(DB) 확보 (COLMAP 삼각측량 불필요)
 
 [로컬라이제이션 서버] (server/)
-쿼리 이미지 수신
-  → SuperPoint 추출
-  → NetVLAD로 DB 후보 top-k 검색 (pairs_from_retrieval)
-  → LightGlue로 2D-2D 매칭 → 대응하는 3D 좌표 확보
-  → PnP+RANSAC (pycolmap.absolute_pose_estimation) → 6DoF pose
+쿼리 이미지 + intrinsics 수신
+  → SuperPoint + NetVLAD 추출 (hloc.extract_features 재사용)
+  → NetVLAD 코사인 유사도로 DB 후보 top-k 검색
+  → LightGlue로 2D-2D 매칭 → 대응하는 3D 좌표 확보 (kp_to_3d_db.pkl)
+  → PnP+RANSAC (pycolmap.estimate_and_refine_absolute_pose) → 6DoF pose
   → JSON으로 리턴
 
-[로봇/Nav2 통합]
-리턴된 pose를 robot_localization EKF의 한 입력 소스로 fusion, 또는 amcl 초기화/보정에 사용.
+[로봇/Nav2 통합] (ros2_ws/src/dc_vps_bridge/)
+로봇 카메라 토픽을 주기적으로 서버에 쿼리 → 리턴된 pose를 map 프레임으로 캘리브레이션
+변환 → PoseWithCovarianceStamped 퍼블리시. robot_localization EKF의 한 입력 소스로
+fusion하거나, amcl `/initialpose`로 remap해서 재측위에 사용.
 hloc world 좌표계와 occupancy grid 좌표계는 최초 스캔 시 origin 캘리브레이션으로 정합한다.
 ```
 
@@ -46,10 +48,11 @@ hloc world 좌표계와 occupancy grid 좌표계는 최초 스캔 시 origin 캘
 
 ```
 dc-vps/
-├── ios-capture/        # ARKit 캡처 앱 (Swift, Xcode에서 열어서 사용)
-├── pipeline/            # DB 빌드 파이프라인 (Python, hloc 기반)
-├── server/              # FastAPI 로컬라이제이션(VL) 서버
-└── data/                # 스캔 데이터 (git에 커밋하지 않음)
+├── ios-capture/                   # ARKit 캡처 앱 (Swift, Xcode에서 열어서 사용)
+├── pipeline/                      # DB 빌드 파이프라인 (Python, hloc 기반)
+├── server/                        # FastAPI 로컬라이제이션(VL) 서버
+├── ros2_ws/src/dc_vps_bridge/     # ROS2(Humble) Nav2 연동 브리지 노드
+└── data/                          # 스캔 데이터 (git에 커밋하지 않음)
 ```
 
 ## 정합(depth-RGB alignment) 핵심 규칙
@@ -66,7 +69,10 @@ dc-vps/
 
 - [x] 아키텍처 설계
 - [x] 프로젝트 스캐폴딩
-- [ ] ios-capture 앱 구현 (Xcode 프로젝트로 변환 필요, macOS 필요)
-- [ ] pipeline DB 빌드 스크립트 구현/검증
-- [ ] server FastAPI 쿼리 서버 구현
-- [ ] Nav2/robot_localization 통합
+- [x] ios-capture 앱 구현 (Xcode 프로젝트 포함, 실기기 빌드·스캔까지 검증 완료)
+- [x] pipeline DB 빌드 스크립트 구현/검증 (실제 스캔 데이터로 end-to-end 검증 완료)
+- [x] server FastAPI 쿼리 서버 구현 (`/localize` 구현 + 실데이터 검증 완료, 요청당 모델
+      재로딩으로 느림 — server/README.md "알려진 한계" 참고)
+- [ ] Nav2/robot_localization 통합 (`ros2_ws/src/dc_vps_bridge/` — macOS pixi/RoboStack로
+      ROS2 Humble 설치 후 colcon build/ros2 launch까지 실제 검증 완료. 로봇/카메라/Nav2
+      스택이 없어 실제 이미지 토픽으로 VPS 쿼리하는 end-to-end 흐름은 미검증)

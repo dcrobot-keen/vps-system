@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 
 from .localize import Localizer
 
@@ -26,9 +26,19 @@ def health() -> dict:
 
 
 @app.post("/localize")
-async def localize(image: UploadFile = File(...)) -> dict:
+async def localize(
+    image: UploadFile = File(...),
+    fx: float = Form(...),
+    fy: float = Form(...),
+    cx: float = Form(...),
+    cy: float = Form(...),
+    width: int = Form(...),
+    height: int = Form(...),
+) -> dict:
     image_bytes = await image.read()
-    result = localizer.localize(image_bytes)
+    result = localizer.localize(
+        image_bytes, fx=fx, fy=fy, cx=cx, cy=cy, width=width, height=height
+    )
 
     if not result.success:
         raise HTTPException(status_code=422, detail=result.reason or "localization failed")

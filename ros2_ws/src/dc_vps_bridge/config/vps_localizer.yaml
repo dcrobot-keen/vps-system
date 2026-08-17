@@ -1,0 +1,15 @@
+vps_localizer_node:
+  ros__parameters:
+    server_url: "http://localhost:8000/localize"
+    image_topic: "image_raw"
+    camera_info_topic: "camera_info"
+    pose_topic: "vps_pose"
+    map_frame: "map"
+    query_period_sec: 2.0
+    jpeg_quality: 85
+    request_timeout_sec: 30.0
+    position_stddev_m: 0.05
+    orientation_stddev_deg: 5.0
+    # 최초 스캔 시 origin 캘리브레이션 결과로 교체할 것 (README "map 프레임 캘리브레이션" 참고)
+    calibration_translation: [0.0, 0.0, 0.0]
+    calibration_quaternion: [0.0, 0.0, 0.0, 1.0]
