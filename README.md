@@ -66,7 +66,8 @@ dc-vps/
 
 - [x] 아키텍처 설계
 - [x] 프로젝트 스캐폴딩
-- [ ] ios-capture 앱 구현 (Xcode 프로젝트로 변환 필요, macOS 필요)
-- [ ] pipeline DB 빌드 스크립트 구현/검증
+- [ ] ios-capture 앱 구현 (Xcode 프로젝트로 변환 필요, macOS에서 진행 중)
+- [x] pipeline DB 빌드 스크립트 구현/검증 (합성 scan 기반 자동화 테스트로 회귀 검증,
+      `pipeline/tests/`. 실 iPhone 데이터로는 아직 미검증)
 - [ ] server FastAPI 쿼리 서버 구현
 - [ ] Nav2/robot_localization 통합
