@@ -28,19 +28,20 @@ import numpy as np
 import pycolmap
 import torch
 
+from dc_vps_pipeline import config as pipeline_config
 from hloc import extract_features, extractors, match_features, matchers
 from hloc.extract_features import resize_image
 from hloc.utils.base_model import dynamic_load
 
-# pipeline/dc_vps_pipeline/config.py의 SUPERPOINT_CONF/RETRIEVAL_CONF/RETRIEVAL_TOP_K와
-# 반드시 동일해야 한다 — DB가 그 설정으로 빌드됐기 때문에 쿼리도 같은 설정으로 추출해야
-# keypoint 좌표계/디스크립터가 호환된다. pipeline과 server가 별도 venv라 패키지 임포트로
-# 공유하지 않고 값만 맞춰서 복제했다.
-SUPERPOINT_CONF = extract_features.confs["superpoint_inloc"]
-RETRIEVAL_CONF = extract_features.confs["netvlad"]
-RETRIEVAL_TOP_K = 20
+# DB가 pipeline/dc_vps_pipeline/config.py의 설정으로 빌드되기 때문에, 쿼리 쪽도 같은
+# 설정으로 추출해야 keypoint 좌표계/디스크립터가 호환된다. server venv에
+# `pip install -e ../pipeline`로 설치해서(server/README.md 참고) 값을 직접 import한다 —
+# 더 이상 복제하지 않으므로 pipeline 쪽 설정을 바꾸면 여기도 자동으로 따라간다.
+SUPERPOINT_CONF = extract_features.confs[pipeline_config.SUPERPOINT_CONF]
+RETRIEVAL_CONF = extract_features.confs[pipeline_config.RETRIEVAL_CONF]
+RETRIEVAL_TOP_K = pipeline_config.RETRIEVAL_TOP_K
 
-MATCHER_CONF = match_features.confs["superpoint+lightglue"]
+MATCHER_CONF = match_features.confs[pipeline_config.MATCHER_CONF]
 
 # PnP+RANSAC inlier가 이보다 적으면 위치 추정 실패로 간주한다.
 MIN_INLIERS = 12

@@ -13,6 +13,7 @@ python -m venv .venv
 source .venv/bin/activate   # Windows는 .venv\Scripts\activate
 pip install -r requirements.txt
 pip install -e ../pipeline/third_party/Hierarchical-Localization
+pip install -e ../pipeline   # dc_vps_pipeline.config를 그대로 import하기 위해 (아래 참고)
 ```
 
 ## 실행
@@ -60,7 +61,10 @@ PnP+RANSAC(`pycolmap.estimate_and_refine_absolute_pose`)으로 pose를 추정한
 Apple Silicon Mac, CPU 추론 기준). 여전히 실시간이라 부르긴 어렵지만 로봇 루프에
 붙이기엔 훨씬 현실적인 수준. 더 빠르게 하려면 GPU 추론이나 배치 처리가 다음 단계.
 
-`SUPERPOINT_CONF`/`RETRIEVAL_CONF`/`RETRIEVAL_TOP_K`는 `pipeline/dc_vps_pipeline/config.py`와
-반드시 같은 값을 써야 한다 (DB가 그 설정으로 빌드됐기 때문). pipeline과 server가 별도
-venv라 패키지로 공유하지 않고 값만 복제해뒀으니, pipeline 쪽 설정을 바꾸면 여기도 같이
-바꿔야 한다.
+`SUPERPOINT_CONF`/`RETRIEVAL_CONF`/`RETRIEVAL_TOP_K`/`MATCHER_CONF`는
+`pipeline/dc_vps_pipeline/config.py`와 반드시 같은 값을 써야 한다 (DB가 그 설정으로
+빌드됐기 때문). 예전엔 별도 venv라 값을 복제해뒀었는데, `pipeline/`에 최소
+`pyproject.toml`을 추가해서 이제 `pip install -e ../pipeline`로 server venv에
+`dc_vps_pipeline` 패키지를 editable 설치하고 `config.py`를 직접 import한다 — 값
+복제가 없어졌으니 pipeline 쪽 설정을 바꾸면 server도 재설치 없이 자동으로 따라간다
+(editable install이라 소스 변경이 바로 반영됨).

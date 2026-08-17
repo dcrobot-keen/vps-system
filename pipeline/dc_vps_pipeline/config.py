@@ -1,4 +1,9 @@
-"""공장 실내 스캔 기준으로 잡은 기본값. 환경에 따라 조정."""
+"""공장 실내 스캔 기준으로 잡은 기본값. 환경에 따라 조정.
+
+server/도 이 모듈을 그대로 import해서 쓴다 (pip install -e ../pipeline, server/README.md
+참고) — DB가 이 설정으로 빌드되기 때문에 쿼리 쪽(server)도 같은 설정을 써야 keypoint
+좌표계/디스크립터가 호환된다. 이 값들을 바꾸면 기존 DB를 다시 빌드해야 한다.
+"""
 
 # iPhone LiDAR 해상도 (RGB, depth/confidence) — 종횡비 동일(4:3)이므로 스케일은 1축으로 충분
 RGB_WIDTH = 1920
@@ -20,3 +25,6 @@ MIN_DEPTH_METERS = 0.0
 SUPERPOINT_CONF = "superpoint_inloc"  # max_keypoints=4096, nms_radius=4, resize_max=1600
 RETRIEVAL_CONF = "netvlad"
 RETRIEVAL_TOP_K = 20
+
+# server 전용 (pipeline은 매칭을 안 하지만, hloc 관련 설정을 한곳에 모아두기 위해 여기 둔다)
+MATCHER_CONF = "superpoint+lightglue"

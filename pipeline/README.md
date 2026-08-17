@@ -37,3 +37,10 @@ python -m dc_vps_pipeline.db_build <scan_dir> <output_dir>
 - nearest-neighbor lookup만 사용 (bilinear 금지 — flying pixel 문제)
 - confidence < medium인 포인트는 버림
 - depth > 5m인 포인트는 버림 (공장 실내 스캔 기준, 필요시 config.py에서 조정)
+
+## `pyproject.toml`은 왜 있나
+
+`server/`가 이 패키지를 `pip install -e ../pipeline`로 설치해서 `dc_vps_pipeline.config`를
+직접 import한다 (server/README.md 참고) — DB 빌드에 쓴 hloc 설정(`SUPERPOINT_CONF` 등)을
+server의 쿼리 추출도 그대로 따라가야 해서, 값을 복제하는 대신 공유한다. `config.py`를
+바꾸면 기존 DB는 다시 빌드해야 하고, server도 (재설치 없이 바로) 같이 바뀐다.

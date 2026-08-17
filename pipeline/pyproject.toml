@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dc-vps-pipeline"
+version = "0.1.0"
+description = "dc-vps DB 빌드 파이프라인 — server가 config.py를 공유 import하기 위해 설치 가능하게 만든 패키지"
+requires-python = ">=3.10"
+# 실제 의존성 버전은 requirements.txt가 기준. 여기서는 중복 관리하지 않는다
+# (server가 pipeline/dc_vps_pipeline을 pip install -e로 임포트만 하기 위한 최소 설정).
+dependencies = []
+
+[tool.setuptools.packages.find]
+include = ["dc_vps_pipeline*"]
