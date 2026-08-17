@@ -90,3 +90,14 @@ dc-vps/
       2D 지도/report.html까지 한 명령으로. scan-to-map-studio 쪽에 `--ply` 입력 옵션을
       추가해야 동작하는데(원래 `.usdz`만 받음), 그 변경까지 포함해서 실제 스캔 데이터로
       전체 체인 end-to-end 검증 완료
+- [x] 여러 방(room) 지원 — server가 `DC_VPS_DB_DIRS`로 DB 여러 개를 동시에 서빙하고
+      쿼리와 매칭된 room을 자동 판별(`room_id`), `dc_vps_bridge`는 그 room에 맞는
+      `scan_basemap_<room_id>` tf를 자동으로 찾아 씀 — 방끼리 서로 겹쳐 찍지 않아도
+      로봇의 공용 map 프레임으로 이어붙일 수 있음. retrieval이 room 경계를 넘나들지
+      않는 것, 3D 정보 없는 room이 자동으로 배제되는 것까지 실데이터로 검증 완료
+- [x] `scan.usdz` 동시 캡처(`ios-capture/vps/MeshExporter.swift`) — ARKit
+      sceneReconstruction으로 스캔 중 실시간으로 만들어지는 LiDAR mesh를 같은 세션에서
+      `scan.usdz`로 함께 저장. `export_pointcloud.py`(depth 기반)보다 지도 커버리지가
+      훨씬 좋음(실측: free 셀 1121개 → 6097개), `orchestrate.py`가 있으면 자동으로
+      우선 사용. 실기기 검증 완료 (ModelIO 브릿지 API들이 최신 SDK에 없어서 SceneKit
+      고유 API로 재작성한 뒤 성공)

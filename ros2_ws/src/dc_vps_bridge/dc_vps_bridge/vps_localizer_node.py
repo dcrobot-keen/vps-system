@@ -8,6 +8,10 @@ PoseWithCovarianceStamped로 퍼블리시하는 브리지 노드.
   https://github.com/dcrobot-keen/scan-to-map-studio 에 넣어 로봇 자체 SLAM 지도와
   ICP 정합한 결과(scripts/export_tf.py 출력)를 그대로 쓰면 된다 — 같은 스캔에서
   나온 world 좌표계라 별도 변환 없이 바로 맞는다.
+- 서버가 여러 방(room)의 DB를 동시에 서빙 중이면(server/README.md "여러 방" 참고)
+  응답에 room_id가 실려온다 — 그 경우 `scan_basemap_frame` 대신
+  `{scan_basemap_frame_prefix}{room_id}`(기본 접두사 "scan_basemap_")를 tf 소스
+  프레임으로 쓴다. room_id가 없으면(단일 DB 서버) 기존처럼 `scan_basemap_frame`을 쓴다.
 - 그 tf가 아직 안 올라와 있으면(스캔-투-맵 파이프라인을 아직 안 돌렸거나, 로봇이
   없어서 테스트 중인 경우) `calibration_translation`/`calibration_quaternion`
   파라미터(기본 identity)로 대체한다 — tf 없이도 노드가 죽거나 멈추지 않고 계속
@@ -85,6 +89,7 @@ class VPSLocalizerNode(Node):
         self.declare_parameter("pose_topic", "vps_pose")
         self.declare_parameter("map_frame", "map")
         self.declare_parameter("scan_basemap_frame", "scan_basemap")
+        self.declare_parameter("scan_basemap_frame_prefix", "scan_basemap_")
         self.declare_parameter("tf_lookup_timeout_sec", 0.5)
         self.declare_parameter("query_period_sec", 2.0)
         self.declare_parameter("jpeg_quality", 85)
@@ -100,6 +105,7 @@ class VPSLocalizerNode(Node):
         self.server_url = self.get_parameter("server_url").value
         self.map_frame = self.get_parameter("map_frame").value
         self.scan_basemap_frame = self.get_parameter("scan_basemap_frame").value
+        self.scan_basemap_frame_prefix = self.get_parameter("scan_basemap_frame_prefix").value
         self.tf_lookup_timeout = Duration(
             seconds=float(self.get_parameter("tf_lookup_timeout_sec").value)
         )
@@ -205,18 +211,22 @@ class VPSLocalizerNode(Node):
         result = response.json()
         self._publish_pose(result)
 
-    def _get_calibration(self) -> tuple[np.ndarray, np.ndarray]:
-        """scan_basemap -> map 변환을 tf에서 lookup한다. 실패하면 정적 파라미터로 대체한다."""
+    def _get_calibration(self, room_id: str | None) -> tuple[np.ndarray, np.ndarray]:
+        """scan_basemap(_<room_id>) -> map 변환을 tf에서 lookup한다.
+        실패하면 정적 파라미터로 대체한다."""
+        source_frame = (
+            f"{self.scan_basemap_frame_prefix}{room_id}" if room_id else self.scan_basemap_frame
+        )
         try:
             transform = self.tf_buffer.lookup_transform(
                 self.map_frame,
-                self.scan_basemap_frame,
+                source_frame,
                 Time(),
                 timeout=self.tf_lookup_timeout,
             )
         except (LookupException, ConnectivityException, ExtrapolationException) as error:
             self.get_logger().warn(
-                f"'{self.scan_basemap_frame}' -> '{self.map_frame}' tf를 찾을 수 없어 "
+                f"'{source_frame}' -> '{self.map_frame}' tf를 찾을 수 없어 "
                 f"calibration_translation/quaternion 파라미터로 대체함: {error}",
                 throttle_duration_sec=10,
             )
@@ -231,7 +241,7 @@ class VPSLocalizerNode(Node):
     def _publish_pose(self, result: dict) -> None:
         t_world_cam = np.array(result["translation"], dtype=np.float64)
         r_world_cam = quaternion_to_matrix(np.array(result["quaternion"], dtype=np.float64))
-        calib_translation, calib_rotation = self._get_calibration()
+        calib_translation, calib_rotation = self._get_calibration(result.get("room_id"))
 
         # T_map_from_cam = T_map_from_world * T_world_from_cam
         r_map_cam = calib_rotation @ r_world_cam
@@ -253,7 +263,7 @@ class VPSLocalizerNode(Node):
         self.pose_pub.publish(msg)
         self.get_logger().info(
             f"VPS pose 퍼블리시: t={t_map_cam.round(3).tolist()}, "
-            f"num_inliers={result.get('num_inliers')}"
+            f"room_id={result.get('room_id')}, num_inliers={result.get('num_inliers')}"
         )
 
 

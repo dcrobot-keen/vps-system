@@ -18,8 +18,15 @@ pip install -e ../pipeline   # dc_vps_pipeline.config를 그대로 import하기 
 
 ## 실행
 
+단일 방(DB 하나):
 ```bash
 export DC_VPS_DB_DIR=../pipeline/outputs/<scan_name>
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+여러 방(DB 여러 개, 콤마로 구분 — 아래 "여러 방" 참고):
+```bash
+export DC_VPS_DB_DIRS=../pipeline/outputs/scan_room_a,../pipeline/outputs/scan_room_b
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
@@ -30,9 +37,10 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
   - `image`: 쿼리 이미지 파일
   - `fx`, `fy`, `cx`, `cy`, `width`, `height`: 쿼리 이미지를 찍은 카메라의 intrinsics
     (PnP에 필수 — 쿼리 카메라가 스캔에 쓴 iPhone과 다를 수 있으므로 매 요청마다 받는다)
-  - 성공 시 `{"translation": [x,y,z], "quaternion": [qx,qy,qz,qw], "num_inliers": N}` 리턴
-    (world 좌표계 기준 카메라 pose, `ios-capture`의 poses.jsonl `camera_transform`과 동일한
-    camera-to-world 컨벤션). 매칭 실패/inlier 부족 시 422.
+  - 성공 시 `{"room_id": "scan_...", "translation": [x,y,z], "quaternion": [qx,qy,qz,qw], "num_inliers": N}`
+    리턴 (world 좌표계 기준 카메라 pose, `ios-capture`의 poses.jsonl `camera_transform`과
+    동일한 camera-to-world 컨벤션. `room_id`는 매칭된 DB 디렉터리 이름 — 아래 "여러 방"
+    참고). 매칭 실패/inlier 부족 시 422.
 
 ```bash
 curl -X POST http://localhost:8000/localize \
@@ -40,6 +48,26 @@ curl -X POST http://localhost:8000/localize \
   -F "fx=1462.0" -F "fy=1462.0" -F "cx=966.5" -F "cy=720.7" \
   -F "width=1920" -F "height=1440"
 ```
+
+## 여러 방(room)
+
+`DC_VPS_DB_DIRS`로 여러 DB를 동시에 로드하면, 쿼리 이미지가 어느 DB(room)와
+매칭됐는지 자동으로 찾아준다. 각 DB 디렉터리 이름(보통 `scan_<name>`)이 그대로
+`room_id`가 된다 — 그러니 여러 방을 등록할 땐 디렉터리 이름이 겹치지 않아야 한다.
+
+동작 방식: NetVLAD retrieval은 room 경계 없이 전체 DB를 가로질러 top-k를 찾고,
+그 후보를 room별로 묶어서 room마다 따로 LightGlue 매칭 + PnP를 시도한 뒤 inlier가
+제일 많은 room의 결과를 채택한다 (서로 다른 room은 world 좌표계가 다른 별도
+스캔이라, 한 PnP에 여러 room의 3D 점을 섞어 쓸 수 없어서 이렇게 분리했다). 방
+개수가 늘수록 room마다 PnP를 시도할 수 있어 쿼리가 느려질 수 있다.
+
+`ros2_ws/src/dc_vps_bridge`는 응답의 `room_id`를 보고 그 room에 맞는
+`scan_basemap_<room_id>` tf(scan-to-map-studio로 각 room을 로봇 map에 각각
+등록한 결과)를 자동으로 찾아 쓴다 — 방마다 서로 다른 world 좌표계를 로봇의 공용
+`map` 프레임 하나로 이어붙이는 방식이다 (pipeline/README.md 참고). 실제로 DB 2개
+(하나는 복제본)를 동시에 로드해서 retrieval이 room 경계를 넘나들지 않고, 3D 정보가
+없는 room은 자동으로 걸러지고 다른 room이 정확히 선택되는 것까지 검증함
+(2026-08-17).
 
 ## 구현 메모
 

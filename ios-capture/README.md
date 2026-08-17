@@ -21,6 +21,8 @@ macOS + Xcode가 필요하다. `vps.xcodeproj`가 이 폴더에 이미 있으니
 - `ZipArchiver.swift` (외부 의존성 없는 zip 내보내기) — `Data`의
   `withUnsafeBytes(of:)` 호출이 다른 오버로드와 모호해져서 `Swift.withUnsafeBytes`로
   명시적으로 한정해야 컴파일된다
+- `MeshExporter.swift` (`ARMeshAnchor` -> `scan.usdz`) — 실기기 검증 완료
+  (아래 "scan.usdz 동시 캡처" 참고)
 
 앱 UI: 세션 이름을 입력하고 "시작"을 누르면 캡처가 시작되고, "정지"를 누르면
 `Documents/scan_<name>/`에 저장이 끝난다. "내보내기"를 누르면 해당 폴더를 zip으로
@@ -38,6 +40,7 @@ macOS + Xcode가 필요하다. `vps.xcodeproj`가 이 폴더에 이미 있으니
 ```
 scan_<name>/
 ├── manifest.json          # 세션 메타데이터
+├── scan.usdz               # LiDAR mesh (있으면) — scan-to-map-studio --usdz 입력용
 ├── rgb/
 │   ├── frame_00001.jpg
 │   └── ...
@@ -47,6 +50,34 @@ scan_<name>/
 └── poses/
     └── poses.jsonl        # 프레임별 pose+intrinsics, 한 줄에 하나
 ```
+
+## scan.usdz 동시 캡처
+
+`ARWorldTrackingConfiguration.sceneReconstruction`을 켜서(`.meshWithClassification`,
+안 되면 `.mesh`) 스캔하는 동안 ARKit이 실시간으로 만드는 mesh(`ARMeshAnchor`)를
+"정지" 시점에 모아 `MeshExporter.swift`가 `scan.usdz`로 내보낸다. rgb/depth/poses와
+**같은 ARSession**에서 나온 mesh라 world 좌표계가 VPS DB와 완전히 동일하다 — 두
+스캔을 따로 찍어 나중에 ICP로 정합할 필요가 없다. 또한 ARKit의 실시간 mesh fusion은
+스로틀링된 depth 프레임을 단순 backproject하는 것보다 구멍이 덜 뚫린 메시를 만들어줘서,
+`pipeline/export_pointcloud.py`보다 지도 품질이 나을 걸로 기대한다.
+
+`scan.usdz`가 생기면 `pipeline/dc_vps_pipeline/orchestrate.py`가 자동으로 감지해서
+`export_pointcloud.py`(depth 기반 sparse 포인트클라우드) 대신 이걸 우선 쓴다 —
+실측 비교 결과 커버리지가 훨씬 좋다(같은 스캔 기준 free 셀 1121개 -> 6097개,
+지도 형태도 복도 줄무늬가 아니라 명확한 방 폴리곤으로 나옴).
+
+**실기기 검증 완료** (2026-08-17): 처음엔 세 번 연속 컴파일/런타임 에러가 났다 —
+1. `MDLAsset.export(to:)`가 iOS에서 `.usdz` 확장자를 인식 못 함
+   ("Unknown extension on URL"로 `MDLErrorDomain` 실패)
+2. `SCNScene(mdlAsset:)`, `SCNNode(mdlObject:)`, `SCNGeometry(mdlMesh:)` — ModelIO↔SceneKit
+   브릿지 API들이 이 SDK(iOS 26.6)엔 없음(컴파일 에러)
+
+최종적으로 ModelIO를 아예 안 거치고, SceneKit 고유 API(`SCNGeometrySource`/
+`SCNGeometryElement`)로 직접 geometry를 만들어 `SCNScene.write(to:)`로 저장하는
+방식으로 해결했다. 실제 스캔(anchor 38개, vertex 15만 개)에서 `scan.usdz`(4.7MB)가
+정상 생성되고, OpenUSD(`pxr`)로 읽었을 때 164,382개 포인트가 정상 추출되는 것,
+scan-to-map-studio의 `remove_ceiling.py`→`rasterize_base_map.py`를 그대로 통과해서
+유효한 지도가 나오는 것까지 확인함.
 
 ## poses.jsonl 한 줄 포맷
 
@@ -78,3 +109,5 @@ scan_<name>/
 - [x] zip export + 공유 UI (`ZipArchiver.swift`, `ContentView.swift`)
 - [x] 실기기(LiDAR 탑재) 빌드 검증 — 실제 iPhone에 설치해서 스캔 완료, pipeline
       DB 빌드까지 end-to-end 검증됨
+- [x] `scan.usdz` 동시 캡처(`MeshExporter.swift`) 실기기 검증 완료 — 3번의 시행착오
+      끝에 SceneKit 고유 API로 해결, scan-to-map-studio 파이프라인 통과까지 확인

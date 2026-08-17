@@ -8,3 +8,4 @@ numpy
 opencv-python
 h5py
 pillow
+requests  # visualize_query.py가 server/의 /localize를 호출하는 데 씀

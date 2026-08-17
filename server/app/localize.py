@@ -2,11 +2,19 @@
 
 흐름 (ARC eye VL API와 동일한 역할):
 1. 쿼리 이미지에서 SuperPoint 추출
-2. NetVLAD로 DB에서 top-k(RETRIEVAL_TOP_K) 후보 이미지 검색
-3. LightGlue로 쿼리-DB 2D-2D 매칭 -> 매칭된 DB keypoint의 3D 좌표(kp_to_3d_db) 가져오기
-4. 2D(쿼리)-3D(world) 대응점으로 pycolmap.estimate_and_refine_absolute_pose (PnP+RANSAC) -> 6DoF pose
+2. NetVLAD로 모든 방(room)의 DB를 가로질러 top-k(RETRIEVAL_TOP_K) 후보 이미지 검색
+3. 후보를 방(room)별로 묶어서, 각 방마다 LightGlue로 2D-2D 매칭 -> 매칭된 DB keypoint의
+   3D 좌표(kp_to_3d_db) 가져오기
+4. 방마다 2D(쿼리)-3D(world) 대응점으로 pycolmap.estimate_and_refine_absolute_pose
+   (PnP+RANSAC) 시도 -> inlier가 제일 많은 방의 결과를 채택
 
 db_build.py가 만든 kp_to_3d_db.pkl + hloc feature/global descriptor 파일을 로드해서 사용한다.
+
+여러 방을 지원하는 이유: 방마다 스캔 세션의 world 좌표계(ARKit 원점)가 서로 다르기
+때문에, 서로 다른 방의 3D 포인트를 하나의 PnP에 섞어 넣을 수 없다 — 그래서 retrieval은
+방 경계 없이 전체를 검색하되, 매칭/PnP는 방 단위로 분리해서 돌리고 제일 잘 맞는 방을
+고른다. 리턴값의 room_id로 어느 방인지 알 수 있다 (ros2_ws/src/dc_vps_bridge가 방마다
+다른 scan_basemap_<room_id> tf를 찾아 쓸 수 있도록).
 
 SuperPoint/NetVLAD/LightGlue 모델은 Localizer.__init__에서 한 번만 로드해 인스턴스에
 캐싱해둔다 (이전엔 hloc.extract_features.main()/match_features.match_from_paths()를
@@ -50,10 +58,20 @@ MIN_INLIERS = 12
 @dataclass
 class LocalizationResult:
     success: bool
-    translation: list[float] | None = None  # [x, y, z], world 좌표계
+    room_id: str | None = None  # 매칭된 DB(scan_<name>) 디렉터리 이름
+    translation: list[float] | None = None  # [x, y, z], 해당 room의 world 좌표계
     quaternion: list[float] | None = None  # [qx, qy, qz, qw]
     num_inliers: int = 0
     reason: str | None = None
+
+
+@dataclass
+class _RoomDB:
+    room_id: str
+    features_path: Path
+    kp_to_3d_db: dict[str, list]
+    db_names: list[str]
+    db_global_descs: np.ndarray  # (N, D), L2-정규화됨
 
 
 def _read_image_bytes(image_bytes: bytes, grayscale: bool) -> np.ndarray:
@@ -69,28 +87,27 @@ def _read_image_bytes(image_bytes: bytes, grayscale: bool) -> np.ndarray:
 
 
 class Localizer:
-    def __init__(self, db_dir: Path):
-        self.db_dir = db_dir
-        self.features_path = db_dir / f"{SUPERPOINT_CONF['output']}.h5"
-        self.global_features_path = db_dir / f"{RETRIEVAL_CONF['output']}.h5"
-        kp_to_3d_path = db_dir / "kp_to_3d_db.pkl"
+    def __init__(self, db_dirs: list[Path]):
+        if not db_dirs:
+            raise ValueError("db_dirs가 비어 있습니다 — DB 디렉터리를 최소 하나 지정하세요")
 
-        for path in (self.features_path, self.global_features_path, kp_to_3d_path):
-            if not path.exists():
-                raise FileNotFoundError(
-                    f"DB 파일을 찾을 수 없습니다: {path}. "
-                    "pipeline/dc_vps_pipeline/db_build.py로 먼저 DB를 빌드했는지 확인하세요."
+        self.rooms: dict[str, _RoomDB] = {}
+        for db_dir in db_dirs:
+            room = self._load_room(db_dir)
+            if room.room_id in self.rooms:
+                raise ValueError(
+                    f"room_id가 중복됩니다: '{room.room_id}' — DB 디렉터리 이름이 겹치지 않게 하세요"
                 )
+            self.rooms[room.room_id] = room
 
-        with kp_to_3d_path.open("rb") as f:
-            self.kp_to_3d_db: dict[str, list] = pickle.load(f)
-
-        with h5py.File(self.global_features_path, "r", libver="latest") as fd:
-            self.db_names = list(fd.keys())
-            descs = np.stack(
-                [fd[name]["global_descriptor"].__array__() for name in self.db_names], 0
-            ).astype(np.float64)
-        self.db_global_descs = descs / np.linalg.norm(descs, axis=1, keepdims=True)
+        # NetVLAD retrieval은 room 경계 없이 전체를 한 번에 검색한다 (매칭/PnP만 room
+        # 단위로 분리 — room마다 world 좌표계가 달라서 섞어 쓸 수 없다).
+        self.retrieval_index: list[tuple[str, str]] = []  # (room_id, image_name)
+        all_descs = []
+        for room in self.rooms.values():
+            all_descs.append(room.db_global_descs)
+            self.retrieval_index.extend((room.room_id, name) for name in room.db_names)
+        self.all_global_descs = np.concatenate(all_descs, axis=0)
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.superpoint_model = (
@@ -107,6 +124,38 @@ class Localizer:
             dynamic_load(matchers, MATCHER_CONF["model"]["name"])(MATCHER_CONF["model"])
             .eval()
             .to(self.device)
+        )
+
+    @staticmethod
+    def _load_room(db_dir: Path) -> _RoomDB:
+        room_id = db_dir.name
+        features_path = db_dir / f"{SUPERPOINT_CONF['output']}.h5"
+        global_features_path = db_dir / f"{RETRIEVAL_CONF['output']}.h5"
+        kp_to_3d_path = db_dir / "kp_to_3d_db.pkl"
+
+        for path in (features_path, global_features_path, kp_to_3d_path):
+            if not path.exists():
+                raise FileNotFoundError(
+                    f"DB 파일을 찾을 수 없습니다: {path}. "
+                    "pipeline/dc_vps_pipeline/db_build.py로 먼저 DB를 빌드했는지 확인하세요."
+                )
+
+        with kp_to_3d_path.open("rb") as f:
+            kp_to_3d_db: dict[str, list] = pickle.load(f)
+
+        with h5py.File(global_features_path, "r", libver="latest") as fd:
+            db_names = list(fd.keys())
+            descs = np.stack(
+                [fd[name]["global_descriptor"].__array__() for name in db_names], 0
+            ).astype(np.float64)
+        db_global_descs = descs / np.linalg.norm(descs, axis=1, keepdims=True)
+
+        return _RoomDB(
+            room_id=room_id,
+            features_path=features_path,
+            kp_to_3d_db=kp_to_3d_db,
+            db_names=db_names,
+            db_global_descs=db_global_descs,
         )
 
     def localize(
@@ -129,11 +178,9 @@ class Localizer:
         if not candidates:
             return LocalizationResult(success=False, reason="검색 후보를 찾지 못함")
 
-        points2d, points3d = self._gather_correspondences(query_pred, candidates)
-        if len(points2d) < 4:
-            return LocalizationResult(
-                success=False, reason=f"2D-3D 대응점 부족 ({len(points2d)}개, 최소 4개 필요)"
-            )
+        correspondences_by_room = self._gather_correspondences_by_room(query_pred, candidates)
+        if not correspondences_by_room:
+            return LocalizationResult(success=False, reason="2D-3D 대응점 부족")
 
         camera = {
             "model": "PINHOLE",
@@ -141,28 +188,36 @@ class Localizer:
             "height": height,
             "params": [fx, fy, cx, cy],
         }
-        ret = pycolmap.estimate_and_refine_absolute_pose(
-            points2d, points3d, camera, pycolmap.AbsolutePoseEstimationOptions()
-        )
 
-        if ret is None or ret["num_inliers"] < MIN_INLIERS:
-            return LocalizationResult(
-                success=False,
-                num_inliers=ret["num_inliers"] if ret else 0,
-                reason="PnP+RANSAC 실패 또는 inlier 부족",
+        best: LocalizationResult | None = None
+        for room_id, (points2d, points3d) in correspondences_by_room.items():
+            if len(points2d) < 4:
+                continue
+            ret = pycolmap.estimate_and_refine_absolute_pose(
+                points2d, points3d, camera, pycolmap.AbsolutePoseEstimationOptions()
             )
+            if ret is None or ret["num_inliers"] < MIN_INLIERS:
+                continue
 
-        # cam_from_world(world->camera)를 world_from_cam(camera->world)으로 뒤집는다 —
-        # poses.jsonl의 camera_transform과 동일하게 "카메라의 world 좌표계 pose"로 리턴하기 위함.
-        world_from_cam = ret["cam_from_world"].inverse()
-        qx, qy, qz, qw = world_from_cam.rotation.quat
+            # cam_from_world(world->camera)를 world_from_cam(camera->world)으로 뒤집는다 —
+            # poses.jsonl의 camera_transform과 동일하게 "카메라의 world 좌표계 pose"로 리턴.
+            world_from_cam = ret["cam_from_world"].inverse()
+            qx, qy, qz, qw = world_from_cam.rotation.quat
+            candidate_result = LocalizationResult(
+                success=True,
+                room_id=room_id,
+                translation=world_from_cam.translation.tolist(),
+                quaternion=[float(qx), float(qy), float(qz), float(qw)],
+                num_inliers=ret["num_inliers"],
+            )
+            if best is None or candidate_result.num_inliers > best.num_inliers:
+                best = candidate_result
 
-        return LocalizationResult(
-            success=True,
-            translation=world_from_cam.translation.tolist(),
-            quaternion=[float(qx), float(qy), float(qz), float(qw)],
-            num_inliers=ret["num_inliers"],
-        )
+        if best is None:
+            return LocalizationResult(
+                success=False, reason="모든 후보 room에서 PnP+RANSAC 실패 또는 inlier 부족"
+            )
+        return best
 
     # MARK: - feature extraction (hloc.extract_features의 전처리/후처리를 인메모리로 재현)
 
@@ -206,19 +261,21 @@ class Localizer:
             pred = self.netvlad_model({"image": tensor.to(self.device)})
         return pred["global_descriptor"][0].cpu().numpy()
 
-    def _retrieve_candidates(self, query_desc: np.ndarray) -> list[str]:
+    def _retrieve_candidates(self, query_desc: np.ndarray) -> list[tuple[str, str]]:
+        """전체 room을 가로질러 top-k를 검색한다. 반환값은 (room_id, image_name) 목록."""
         query_desc = query_desc.astype(np.float64)
         query_desc = query_desc / np.linalg.norm(query_desc)
 
-        scores = self.db_global_descs @ query_desc
-        top_k = min(RETRIEVAL_TOP_K, len(self.db_names))
+        scores = self.all_global_descs @ query_desc
+        top_k = min(RETRIEVAL_TOP_K, len(self.retrieval_index))
         top_indices = np.argsort(-scores)[:top_k]
-        return [self.db_names[i] for i in top_indices]
+        return [self.retrieval_index[i] for i in top_indices]
 
     # MARK: - matching (hloc.match_features의 FeaturePairsDataset을 인메모리로 재현)
 
-    def _match_candidate(self, query_pred: dict, candidate_name: str) -> np.ndarray:
-        with h5py.File(self.features_path, "r", libver="latest") as fd:
+    def _match_candidate(self, query_pred: dict, room_id: str, candidate_name: str) -> np.ndarray:
+        features_path = self.rooms[room_id].features_path
+        with h5py.File(features_path, "r", libver="latest") as fd:
             grp = fd[candidate_name]
             ref_keypoints = grp["keypoints"].__array__().astype(np.float32)
             ref_descriptors = grp["descriptors"].__array__().astype(np.float32)
@@ -244,19 +301,21 @@ class Localizer:
             pred = self.lightglue_model(data)
         return pred["matches0"][0].cpu().numpy()
 
-    def _gather_correspondences(
-        self, query_pred: dict, candidates: list[str]
-    ) -> tuple[np.ndarray, np.ndarray]:
-        points2d: list[np.ndarray] = []
-        points3d: list[np.ndarray] = []
+    def _gather_correspondences_by_room(
+        self, query_pred: dict, candidates: list[tuple[str, str]]
+    ) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+        """room마다 서로 다른 world 좌표계를 쓰므로, 대응점을 room별로 분리해서 모은다
+        (한 PnP 안에 여러 room의 3D 점을 섞으면 안 됨)."""
         kpq = query_pred["keypoints"]
+        points2d_by_room: dict[str, list[np.ndarray]] = {}
+        points3d_by_room: dict[str, list[np.ndarray]] = {}
 
-        for candidate in candidates:
-            candidate_points_3d = self.kp_to_3d_db.get(candidate)
+        for room_id, candidate in candidates:
+            candidate_points_3d = self.rooms[room_id].kp_to_3d_db.get(candidate)
             if candidate_points_3d is None:
                 continue
 
-            matches = self._match_candidate(query_pred, candidate)
+            matches = self._match_candidate(query_pred, room_id, candidate)
             valid = matches > -1
             if not np.any(valid):
                 continue
@@ -266,9 +325,10 @@ class Localizer:
                 p3d = candidate_points_3d[ref_idx]
                 if p3d is None:
                     continue
-                points2d.append(kpq[query_idx].astype(np.float64))
-                points3d.append(np.asarray(p3d, dtype=np.float64))
+                points2d_by_room.setdefault(room_id, []).append(kpq[query_idx].astype(np.float64))
+                points3d_by_room.setdefault(room_id, []).append(np.asarray(p3d, dtype=np.float64))
 
-        if not points2d:
-            return np.empty((0, 2)), np.empty((0, 3))
-        return np.stack(points2d, 0), np.stack(points3d, 0)
+        return {
+            room_id: (np.stack(points2d_by_room[room_id], 0), np.stack(points3d_by_room[room_id], 0))
+            for room_id in points2d_by_room
+        }

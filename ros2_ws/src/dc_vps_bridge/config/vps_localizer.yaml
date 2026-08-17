@@ -7,7 +7,10 @@ vps_localizer_node:
     map_frame: "map"
     # scan-to-map-studio(scripts/export_tf.py)가 publish하는 static tf의 frame_id.
     # 이 tf가 있으면 자동으로 map 프레임 변환에 쓰고, 없으면 아래 fallback 값을 쓴다.
+    # 서버가 여러 방(room)을 서빙 중이면(server/README.md 참고) 응답의 room_id로
+    # "{scan_basemap_frame_prefix}{room_id}"를 대신 쓴다 (아래 두 파라미터 참고).
     scan_basemap_frame: "scan_basemap"
+    scan_basemap_frame_prefix: "scan_basemap_"
     tf_lookup_timeout_sec: 0.5
     query_period_sec: 2.0
     jpeg_quality: 85

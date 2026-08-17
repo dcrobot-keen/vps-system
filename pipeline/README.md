@@ -61,20 +61,49 @@ python -m dc_vps_pipeline.orchestrate <scan_dir> <output_dir> \
     [--robot-map <robot_map_prefix>] [--project-name <name>]
 ```
 
-`db_build.py`(hloc DB) + `export_pointcloud.py`(포인트클라우드)를 실행한 뒤,
+`db_build.py`(hloc DB)를 실행한 뒤, `scan_dir`에 `scan.usdz`(ios-capture의 ARKit mesh
+export, `ios-capture/README.md` "scan.usdz 동시 캡처" 참고)가 있으면 그걸 우선 쓰고,
+없으면 `export_pointcloud.py`(depth 기반 포인트클라우드)로 폴백한다.
+`scan.usdz`가 바닥/벽 커버리지가 훨씬 좋다 (실측 비교: 같은 조건에서 free 셀
+1121개 -> 6097개, 지도 형태도 복도 줄무늬가 아니라 명확한 방 폴리곤으로 나옴 —
+ARKit의 실시간 mesh fusion이 스로틀링된 depth 프레임 단순 backproject보다 구멍을
+잘 메워주기 때문).
+
 `--scan-to-map-studio-dir`를 줬으면 scan-to-map-studio의 `scripts/studio.py new` /
-`process --ply`를 그 프로젝트 자체 venv(`<dir>/.venv/bin/python`, `--scan-to-map-studio-python`으로
-override 가능)로 subprocess 호출해서 report.html/2D 지도/(있으면) 로봇 지도 정합까지
-이어서 만든다. `--scan-to-map-studio-dir`를 생략하면 hloc DB + `base_map.ply`까지만 생성.
+`process`(`--usdz` 또는 `--ply`)를 그 프로젝트 자체 venv(`<dir>/.venv/bin/python`,
+`--scan-to-map-studio-python`으로 override 가능)로 subprocess 호출해서 report.html/2D
+지도/(있으면) 로봇 지도 정합까지 이어서 만든다. `--scan-to-map-studio-dir`를 생략하면
+hloc DB + (usdz 또는 포인트클라우드)까지만 생성.
 
 **scan-to-map-studio 쪽에 `--ply` 입력 옵션이 있어야 한다** — 원래 `.usdz`만 받던
 `scripts/studio.py process`/`studio/pipeline.py`의 `run_pipeline()`에 이미 만들어진
 포인트클라우드를 바로 받는 경로를 추가했다 (usdz->ply 변환 단계만 건너뛰고 나머지는
-동일). 실제 스캔 데이터로 `orchestrate.py` 전체(hloc DB 빌드 → export_pointcloud →
-scan-to-map-studio `new`+`process --ply`)를 한 명령으로 돌려서 hloc DB
+동일). 실제 스캔 데이터로 `orchestrate.py` 전체를 `--ply` 경로(hloc DB 빌드 →
+export_pointcloud → scan-to-map-studio `new`+`process --ply`)와 `--usdz` 경로(hloc DB
+빌드 → scan.usdz 자동 감지 → `new`+`process --usdz`) 둘 다 한 명령으로 돌려서 hloc DB
 (`kp_to_3d_db.pkl` 등)와 scan-to-map-studio project(`report.html`, `viewer.html`,
-`overlay.glb`, `map/map.pgm`+`.yaml` 등)가 둘 다 정상 생성되는 것까지 검증함
-(2026-08-17).
+`overlay.glb`, `map/map.pgm`+`.yaml` 등)가 정상 생성되는 것까지 검증함 (2026-08-17).
+
+## 쿼리 결과를 지도에 표시
+
+```
+python -m dc_vps_pipeline.visualize_query <image.jpg> <fx> <fy> <cx> <cy> <width> <height> \
+    --scan-to-map-studio-project <scan-to-map-studio 프로젝트 폴더> \
+    [--server-url http://localhost:8000/localize] [--output map_with_query.png]
+```
+
+쿼리 사진을 `server/`(`/localize`)에 보내서 위치를 구한 뒤, scan-to-map-studio가
+만든 `map/map.png` 위에 빨간 점으로 찍는다. VPS 서버가 리턴하는 translation은
+ARKit world 좌표계(Y-up)라, `export_pointcloud.py`/`studio/usdz_import.py`와 동일한
+Z-up 변환((x,y,z) -> (x,-z,y))을 적용한 뒤 `map.yaml`의 origin/resolution으로 픽셀
+위치를 계산한다 (`rasterize.py`가 저장 시 상하 반전하는 것까지 반영). 실제
+쿼리(inlier 673개)로 찍어보니 방 안 실제 공간(흰색, free)에 정확히 찍히는 것까지
+확인함 (2026-08-17).
+
+`<image>`는 서버가 바로 디코딩 가능한 JPEG/PNG여야 한다 — iPhone 사진이 HEIC면
+먼저 변환 필요 (예: macOS `sips -s format jpeg in.HEIC out.jpg`). `fx/fy/cx/cy`는
+그 사진의 실제 해상도 기준 intrinsics — 스캔 때와 해상도가 다르면 비율로 스케일
+해야 한다 (`server/README.md`의 curl 예시 참고).
 
 ## 정합 정책
 

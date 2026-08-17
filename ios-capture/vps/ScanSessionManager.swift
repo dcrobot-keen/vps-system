@@ -73,7 +73,18 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         posesFile = try? FileHandle(forWritingTo: posesURL)
 
         let config = ARWorldTrackingConfiguration()
-        config.sceneReconstruction = [] // 메시 불필요, depth만 사용
+        // scan.usdz export용 mesh. classification이 되면(벽/바닥/천장 자동 분류) 그걸
+        // 쓰고, 안 되면 mesh만이라도 켠다 — 둘 다 LiDAR 기기면 보통 지원되지만
+        // 기기별로 다를 수 있어 방어적으로 확인한다.
+        if ARWorldTrackingConfiguration.supportsSceneReconstruction(.meshWithClassification) {
+            config.sceneReconstruction = .meshWithClassification
+            print("[mesh] meshWithClassification 사용")
+        } else if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
+            config.sceneReconstruction = .mesh
+            print("[mesh] mesh 사용 (classification 미지원)")
+        } else {
+            print("[mesh] 이 기기는 sceneReconstruction을 지원하지 않음 -- scan.usdz 안 나옴")
+        }
         config.frameSemantics = [.sceneDepth, .smoothedSceneDepth]
         session.run(config, options: [.resetTracking, .removeExistingAnchors])
 
@@ -84,12 +95,39 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
 
     func stopSession() {
         guard isRunning else { return }
+        // pause() 이후에도 currentFrame이 남아있을 걸로 기대하기보다, 살아있는
+        // 상태에서 mesh anchor를 먼저 확보해둔다.
+        let meshAnchors = session.currentFrame?.anchors.compactMap { $0 as? ARMeshAnchor } ?? []
+        print("[mesh] stopSession 시점 anchor 개수: \(meshAnchors.count), "
+            + "총 vertex 수: \(meshAnchors.reduce(0) { $0 + $1.geometry.vertices.count })")
         session.pause()
         try? posesFile.close()
         writeManifest()
+        let meshStatus = exportMesh(meshAnchors)
         isRunning = false
         lastOutputDir = outputDir
-        statusMessage = "정지됨 (\(frameCount) 프레임, \(outputDir.lastPathComponent))"
+        statusMessage = "정지됨 (\(frameCount) 프레임, \(outputDir.lastPathComponent))\(meshStatus)"
+    }
+
+    /// scan.usdz로 내보낸다 (scan-to-map-studio --usdz 입력용). VPS용 rgb/depth/poses는
+    /// 이 결과와 무관하게 이미 저장 완료된 상태다. 화면에 바로 보이도록 결과를
+    /// statusMessage에 붙일 문자열로 반환한다 (Xcode 콘솔 안 봐도 앱에서 바로 확인 가능).
+    private func exportMesh(_ meshAnchors: [ARMeshAnchor]) -> String {
+        guard let outputDir else { return "" }
+        guard !meshAnchors.isEmpty else {
+            print("[mesh] mesh anchor가 0개 -- sceneReconstruction이 이 세션에서 활성화 안 됐거나 "
+                + "너무 짧게 스캔해서 ARKit이 mesh를 아직 못 만든 상태")
+            return ", mesh 없음"
+        }
+        let usdzURL = outputDir.appendingPathComponent("scan.usdz")
+        do {
+            try MeshExporter.export(meshAnchors: meshAnchors, to: usdzURL)
+            print("[mesh] scan.usdz 저장 완료: \(usdzURL.path)")
+            return ", scan.usdz 저장됨"
+        } catch {
+            print("[mesh] scan.usdz export 실패: \(error)")
+            return ", mesh export 실패(\(error.localizedDescription))"
+        }
     }
 
     /// scan_<name>/ 폴더를 zip으로 묶어 반환한다. 완료 콜백은 메인 스레드에서 호출된다.

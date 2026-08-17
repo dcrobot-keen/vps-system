@@ -65,8 +65,8 @@ ros2 launch dc_vps_bridge vps_localizer.launch.py
 - `pose_topic`: 퍼블리시할 pose 토픽 이름 (기본 `vps_pose`)
 - `query_period_sec`: VPS 쿼리 주기. 현재 서버가 요청마다 모델을 새로 로드해서
   느리므로(server/README.md "구현 메모" 참고) 너무 짧게 잡지 말 것
-- `map_frame` / `scan_basemap_frame` / `calibration_translation` / `calibration_quaternion`:
-  아래 "map 프레임 캘리브레이션" 참고
+- `map_frame` / `scan_basemap_frame` / `scan_basemap_frame_prefix` / `calibration_translation` /
+  `calibration_quaternion`: 아래 "map 프레임 캘리브레이션" 참고
 
 ## robot_localization / AMCL에 연결하기
 
@@ -124,6 +124,15 @@ VPS pose에 적용한다 — 아래 (B)의 수동 측정 없이 **ICP 기반으�
 `static_transform_publisher`를 띄워 known transform을 lookup해서 정확한 역변환이
 나오는 것까지 확인함(2026-08-17). 다만 두 파이프라인을 **로봇의 실제 SLAM 지도로
 엮어서** 끝까지 돌려본 적은 아직 없다 (로봇이 없어서).
+
+**여러 방(room)일 때**: `server/`가 여러 DB(`DC_VPS_DB_DIRS`)를 서빙 중이면 응답에
+`room_id`가 실려온다 — 그 경우 `scan_basemap_frame`을 무시하고
+`{scan_basemap_frame_prefix}{room_id}`(기본 접두사 `"scan_basemap_"`)를 tf 소스
+프레임으로 쓴다. 즉 방마다 scan-to-map-studio로 각각 로봇 map에 등록해서
+`scan_basemap_<room_id>` tf를 따로 export해두면, 방이 몇 개든 로봇의 공용 `map`
+프레임 하나로 자동으로 이어진다 — 방끼리 서로 겹쳐 찍을 필요 없음. 이것도
+`static_transform_publisher`로 room별 tf 두 개를 띄워서 정확한 room이 정확한 tf를
+찾는 것까지 검증함(2026-08-17).
 
 **(B) 수동 폴백 — `calibration_translation`/`calibration_quaternion`**
 
