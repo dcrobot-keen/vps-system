@@ -105,6 +105,24 @@ Z-up 변환((x,y,z) -> (x,-z,y))을 적용한 뒤 `map.yaml`의 origin/resolutio
 그 사진의 실제 해상도 기준 intrinsics — 스캔 때와 해상도가 다르면 비율로 스케일
 해야 한다 (`server/README.md`의 curl 예시 참고).
 
+## 정확도 실측 (VPS 추정 위치 vs 실제 위치)
+
+```
+python -m dc_vps_pipeline.measure_accuracy <image.jpg> <fx> <fy> <cx> <cy> <width> <height> \
+    --scan-to-map-studio-project <scan-to-map-studio 프로젝트 폴더> \
+    [--ground-truth-pixel <col>,<row>]
+```
+
+`visualize_query.py`와 같은 방식으로 서버에 쿼리하고 지도에 VPS 추정 위치(빨강
+점)를 띄운 뒤, 사용자가 "실제로 여기 서 있었다"는 지점을 지도 위에서 클릭하면
+(초록 점) 그 픽셀 거리를 `map.yaml`의 resolution(m/pixel)으로 환산해서 오차를
+미터 단위로 출력한다. 지도가 이미 실측 스캔에서 나온 정확한 축척이라는 걸
+이용하는 거라 별도로 줄자를 들 필요가 없다. `--ground-truth-pixel`로 픽셀
+좌표를 직접 넘기면 창을 안 띄우고 바로 계산한다(스크립트 자동화용).
+`estimated_pixel()`/`report_error()`의 거리 계산 로직은 실제 map.yaml
+(resolution=0.05m/px)로 10px 오프셋 -> 0.5m 오차가 정확히 나오는 것까지
+검증했다(2026-08-22).
+
 ## 정합 정책
 
 `dc_vps_pipeline/geometry.py`, `dc_vps_pipeline/config.py` 참고. 요약:

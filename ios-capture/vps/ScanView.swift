@@ -18,6 +18,22 @@ struct ScanView: View {
                 .ignoresSafeArea()
                 .onAppear { manager.startPreview() }
 
+            if let guidance = manager.guidanceMessage {
+                VStack {
+                    Text(guidance)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(.orange.opacity(0.85))
+                        .clipShape(Capsule())
+                        .padding(.top, 8)
+                    Spacer()
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .animation(.easeInOut(duration: 0.2), value: manager.guidanceMessage)
+            }
+
             VStack(spacing: 12) {
                 Text(manager.statusMessage)
                     .foregroundStyle(.white)
@@ -38,6 +54,11 @@ struct ScanView: View {
                     }
                     .buttonStyle(.borderedProminent)
                 } else {
+                    Text(Self.preScanTips)
+                        .font(.footnote)
+                        .foregroundStyle(.white.opacity(0.85))
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
                     Button("스캔 시작") {
                         manager.startSession(name: projectName)
                     }
@@ -53,6 +74,13 @@ struct ScanView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(manager.isRunning)
     }
+
+    /// VPS DB 품질에 도움 되는 것으로 확인된 스캔 습관 — 실시간으로 감지하기 어려운
+    /// 것들(질감 있는 표면 위주, 여러 각도에서 훑기)만 시작 전에 짧게 안내한다.
+    /// 감지 가능한 것들(트래킹, 거리, 구역 길이)은 스캔 중 `guidanceMessage`로 대신한다.
+    private static let preScanTips =
+        "천천히, 흔들지 않게 움직여주세요. 흰 벽보다는 가구·표지판처럼 특징이" +
+        " 뚜렷한 곳 위주로, 같은 곳도 2~3개 각도에서 훑어주면 좋아요."
 }
 
 /// 실시간 mesh 프리뷰(cyan 와이어프레임)를 겹쳐 그리기 위해 ARSCNViewDelegate를

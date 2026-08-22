@@ -16,6 +16,10 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
     @Published private(set) var frameCount = 0
     @Published private(set) var statusMessage = "대기 중"
     @Published private(set) var lastOutputDir: URL?
+    /// 스캔 중 실시간으로 보여줄 짧은 안내 문구(트래킹 불안정, 거리, 구역 분할
+    /// 제안 등). nil이면 특별히 알릴 게 없는 정상 상태. VPS DB 품질에 실제로
+    /// 영향을 준다고 실측/조사로 확인된 것들만 넣는다(아래 updateGuidance 참고).
+    @Published private(set) var guidanceMessage: String?
 
     private var frameIndex = 0
     private var sessionName = ""
@@ -29,6 +33,21 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
     private var lastCameraPosition: simd_float3?
     private let captureIntervalSeconds: TimeInterval = 0.4
     private let captureMinDistanceMeters: Float = 0.2
+
+    // MARK: - 스캔 가이드 임계값
+    //
+    // VPS DB 품질에 실제로 영향을 준다고 확인된 것들만 넣었다:
+    // - 트래킹 상태: shouldCapture()가 이미 tracking != .normal인 프레임을 버리고
+    //   있다 — 사용자가 "왜 프레임이 안 늘어나지"를 깨닫게 실시간으로 알려준다.
+    // - 거리: pipeline/dc_vps_pipeline/config.py의 MAX_DEPTH_METERS(5.0)와 맞춰
+    //   여유를 둔 값 — 너무 가깝거나 멀면 그 지점의 depth가 backproject 단계에서
+    //   버려져 3D 포인트가 아예 안 생긴다.
+    // - 구역 분할 제안: 707프레임짜리 긴 스캔에서 ARKit 트래킹 드리프트가 누적돼
+    //   앞/뒤 프레임 사이에 실제 기하 오차가 생기는 걸 실측으로 확인했다(2026-08-22).
+    //   한 room(강체 공간) 단위로 짧게 끊는 게 길게 이어 찍는 것보다 일관적이다.
+    private static let minGuidanceDepthMeters: Float = 0.3
+    private static let maxGuidanceDepthMeters: Float = 4.5
+    private static let wrapUpSuggestionFrameCount = 300
 
     private let ciContext = CIContext()
 
@@ -92,6 +111,7 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         isRunning = true
         frameCount = 0
         statusMessage = "캡처 중"
+        guidanceMessage = nil
     }
 
     func stopSession() {
@@ -106,6 +126,7 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         writeManifest()
         let meshStatus = exportMesh(meshAnchors)
         isRunning = false
+        guidanceMessage = nil
         lastOutputDir = outputDir
         statusMessage = "정지됨 (\(frameCount) 프레임, \(outputDir.lastPathComponent))\(meshStatus)"
     }
@@ -138,6 +159,10 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
     // MARK: - ARSessionDelegate
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        // 캡처 스로틀링과 무관하게 매 프레임 갱신한다 — "왜 프레임이 안 늘어나지"를
+        // 스로틀링 때문인지 트래킹 문제 때문인지 실시간으로 구분해서 알려줘야 한다.
+        if isRunning { updateGuidance(frame: frame) }
+
         guard isRunning, shouldCapture(frame) else { return }
         guard let depthData = frame.smoothedSceneDepth ?? frame.sceneDepth else { return }
 
@@ -156,6 +181,64 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         DispatchQueue.main.async { [weak self] in
             self?.statusMessage = "세션 오류: \(error.localizedDescription)"
         }
+    }
+
+    // MARK: - 스캔 가이드
+
+    /// 트래킹 상태 -> 거리 -> 구역 분할 제안 순으로 확인해서 지금 제일 급한 안내
+    /// 하나만 고른다(트래킹이 안 좋으면 프레임 자체가 안 찍히니 제일 급함).
+    private func updateGuidance(frame: ARFrame) {
+        let message: String?
+        switch frame.camera.trackingState {
+        case .notAvailable:
+            message = "트래킹 준비 중..."
+        case .limited(.initializing):
+            message = "초기화 중 — 천천히 주변을 비춰주세요"
+        case .limited(.relocalizing):
+            message = "재추적 중..."
+        case .limited(.excessiveMotion):
+            message = "너무 빨라요 — 천천히 움직여주세요"
+        case .limited(.insufficientFeatures):
+            message = "특징이 뚜렷한 곳(가구, 표지판 등)을 비춰주세요"
+        case .limited:
+            message = "트래킹이 불안정해요"
+        case .normal:
+            if let depthData = frame.smoothedSceneDepth ?? frame.sceneDepth,
+               let depth = Self.centerDepthMeters(depthData.depthMap) {
+                if depth < Self.minGuidanceDepthMeters {
+                    message = "너무 가까워요 — 조금 물러나주세요"
+                } else if depth > Self.maxGuidanceDepthMeters {
+                    message = "너무 멀어요 — 조금 다가가주세요"
+                } else if frameCount >= Self.wrapUpSuggestionFrameCount {
+                    message = "이 구역은 충분해요 — 저장하고 새 구역으로 이어가면 더 정확해요"
+                } else {
+                    message = nil
+                }
+            } else {
+                message = nil
+            }
+        }
+
+        guard message != guidanceMessage else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.guidanceMessage = message
+        }
+    }
+
+    /// depth map 중앙 픽셀의 거리(m)를 읽는다. LiDAR depth는 Float32 CVPixelBuffer.
+    private static func centerDepthMeters(_ depthMap: CVPixelBuffer) -> Float? {
+        CVPixelBufferLockBaseAddress(depthMap, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(depthMap, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(depthMap) else { return nil }
+
+        let width = CVPixelBufferGetWidth(depthMap)
+        let height = CVPixelBufferGetHeight(depthMap)
+        guard width > 0, height > 0 else { return nil }
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(depthMap)
+        let rowPointer = base.advanced(by: (height / 2) * bytesPerRow)
+        let value = rowPointer.assumingMemoryBound(to: Float32.self)[width / 2]
+        guard value.isFinite, value > 0 else { return nil }
+        return value
     }
 
     // MARK: - Capture throttling
