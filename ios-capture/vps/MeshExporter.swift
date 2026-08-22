@@ -24,7 +24,10 @@ enum MeshExporter {
         case writeFailed
     }
 
-    /// meshAnchors를 하나의 .usdz로 합쳐서 저장한다.
+    /// meshAnchors를 하나의 .usdz로 합쳐서 저장한다. 색/텍스처는 넣지 않는다 — 이
+    /// 앱은 VPS/지도화용 raw 데이터와 무채색 mesh만 책임지고, 사진 기반 시각화
+    /// (Digital Twin급 텍스처링, Gaussian Splatting)는 별도 GPU 서버 프로젝트로
+    /// 분리했다.
     static func export(meshAnchors: [ARMeshAnchor], to url: URL) throws {
         if FileManager.default.fileExists(atPath: url.path) {
             try? FileManager.default.removeItem(at: url)
@@ -33,7 +36,7 @@ enum MeshExporter {
         let scene = SCNScene()
         var addedAny = false
         for anchor in meshAnchors {
-            guard let geometry = scnGeometry(for: anchor) else { continue }
+            guard let geometry = scnGeometry(for: anchor, worldSpace: true) else { continue }
             scene.rootNode.addChildNode(SCNNode(geometry: geometry))
             addedAny = true
         }
@@ -44,11 +47,15 @@ enum MeshExporter {
         }
     }
 
-    /// ARMeshAnchor 하나를 world 좌표계로 변환한 SCNGeometry로 만든다.
-    /// vertex/normal은 anchor.transform을 적용해 local -> world로 미리 구워 넣는다
-    /// (여러 anchor를 각자 좌표계로 두지 않고, 좌표가 이미 맞춰진 단일 world
-    /// 좌표계로 저장하기 위함).
-    private static func scnGeometry(for anchor: ARMeshAnchor) -> SCNGeometry? {
+    /// ARMeshAnchor 하나를 SCNGeometry로 만든다. `ScanSessionManager`의 실시간 미리보기
+    /// (`ARSCNViewDelegate`)에서도 재사용한다.
+    ///
+    /// - `worldSpace: true`(export용): vertex/normal에 anchor.transform을 구워 넣어
+    ///   여러 anchor를 하나의 공통 world 좌표계로 합친다.
+    /// - `worldSpace: false`(실시간 미리보기용): local 좌표 그대로 둔다 — SceneKit이
+    ///   `ARSCNViewDelegate`로 넘겨주는 node를 anchor.transform 위치에 이미 놔주기
+    ///   때문에, 여기서 또 적용하면 이중 변환이 된다.
+    static func scnGeometry(for anchor: ARMeshAnchor, worldSpace: Bool) -> SCNGeometry? {
         let geometry = anchor.geometry
         let vertexSource = geometry.vertices
         let normalSource = geometry.normals
@@ -69,8 +76,8 @@ enum MeshExporter {
             SIMD3(anchor.transform.columns.2.x, anchor.transform.columns.2.y, anchor.transform.columns.2.z)
         )
 
-        var worldVertices = [SIMD3<Float>](repeating: .zero, count: vertexCount)
-        var worldNormals = [SIMD3<Float>](repeating: .zero, count: vertexCount)
+        var outVertices = [SIMD3<Float>](repeating: .zero, count: vertexCount)
+        var outNormals = [SIMD3<Float>](repeating: .zero, count: vertexCount)
         let vertexBuffer = vertexSource.buffer.contents()
         let normalBuffer = normalSource.buffer.contents()
         for i in 0..<vertexCount {
@@ -83,13 +90,27 @@ enum MeshExporter {
             let vx = vertexBase.load(fromByteOffset: 0, as: Float.self)
             let vy = vertexBase.load(fromByteOffset: 4, as: Float.self)
             let vz = vertexBase.load(fromByteOffset: 8, as: Float.self)
-            let world = anchor.transform * SIMD4<Float>(vx, vy, vz, 1.0)
-            worldVertices[i] = SIMD3<Float>(world.x, world.y, world.z)
 
             let nx = normalBase.load(fromByteOffset: 0, as: Float.self)
             let ny = normalBase.load(fromByteOffset: 4, as: Float.self)
             let nz = normalBase.load(fromByteOffset: 8, as: Float.self)
-            worldNormals[i] = simd_normalize(rotation * SIMD3<Float>(nx, ny, nz))
+
+            if worldSpace {
+                let world = anchor.transform * SIMD4<Float>(vx, vy, vz, 1.0)
+                outVertices[i] = SIMD3<Float>(world.x, world.y, world.z)
+                let rotatedNormal = rotation * SIMD3<Float>(nx, ny, nz)
+                // ARKit mesh 경계/미완성 영역엔 (0,0,0) normal이 섞여 나올 수 있는데,
+                // 그대로 simd_normalize하면 0/0 = NaN이 된다. NaN이 vertex 하나에만
+                // 있어도 USD 뷰어(Xcode Quick Look 등)가 그 mesh 전체의 bounding box를
+                // NaN으로 계산해 통째로 안 그리는 경우가 있어(실측: 전체 화면이 검게 나옴)
+                // 반드시 걸러야 한다.
+                outNormals[i] = simd_length(rotatedNormal) > 1e-6
+                    ? simd_normalize(rotatedNormal)
+                    : SIMD3<Float>(0, 1, 0)
+            } else {
+                outVertices[i] = SIMD3<Float>(vx, vy, vz)
+                outNormals[i] = SIMD3<Float>(nx, ny, nz)
+            }
         }
 
         let triangleCount = faceElement.count
@@ -103,8 +124,8 @@ enum MeshExporter {
             indices[i] = indexBuffer.advanced(by: offset).assumingMemoryBound(to: UInt32.self).pointee
         }
 
-        let vertexData = worldVertices.withUnsafeBufferPointer { Data(buffer: $0) }
-        let normalData = worldNormals.withUnsafeBufferPointer { Data(buffer: $0) }
+        let vertexData = outVertices.withUnsafeBufferPointer { Data(buffer: $0) }
+        let normalData = outNormals.withUnsafeBufferPointer { Data(buffer: $0) }
         let indexData = indices.withUnsafeBufferPointer { Data(buffer: $0) }
 
         let vertexGeoSource = SCNGeometrySource(

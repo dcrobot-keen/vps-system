@@ -4,7 +4,7 @@ import SwiftUI
 struct DCVPSCaptureApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ProjectListView()
         }
     }
 }

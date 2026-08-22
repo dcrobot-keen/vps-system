@@ -2,6 +2,7 @@ import ARKit
 import Combine
 import CoreImage
 import Foundation
+import SceneKit
 import UIKit
 
 /// RGB + LiDAR depth + confidence + ARKit pose(6DoF)를 프레임 단위로 동기화해서
@@ -109,9 +110,13 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         statusMessage = "정지됨 (\(frameCount) 프레임, \(outputDir.lastPathComponent))\(meshStatus)"
     }
 
-    /// scan.usdz로 내보낸다 (scan-to-map-studio --usdz 입력용). VPS용 rgb/depth/poses는
-    /// 이 결과와 무관하게 이미 저장 완료된 상태다. 화면에 바로 보이도록 결과를
-    /// statusMessage에 붙일 문자열로 반환한다 (Xcode 콘솔 안 봐도 앱에서 바로 확인 가능).
+    /// scan.usdz로 내보낸다 (scan-to-map-studio --usdz 입력용, 지도화/robot 연동 트랙).
+    /// VPS용 rgb/depth/poses는 이 결과와 무관하게 이미 저장 완료된 상태다. 화면에 바로
+    /// 보이도록 결과를 statusMessage에 붙일 문자열로 반환한다.
+    ///
+    /// 색/텍스처는 넣지 않는다 — Digital Twin급 시각화(사진 기반 텍스처링, 나아가
+    /// Gaussian Splatting)는 별도 프로젝트(GPU 서버 트랙)로 분리했고, 이 앱은 VPS와
+    /// 지도화에 필요한 raw 데이터(rgb/depth/poses)와 무채색 mesh만 책임진다.
     private func exportMesh(_ meshAnchors: [ARMeshAnchor]) -> String {
         guard let outputDir else { return "" }
         guard !meshAnchors.isEmpty else {
@@ -127,24 +132,6 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         } catch {
             print("[mesh] scan.usdz export 실패: \(error)")
             return ", mesh export 실패(\(error.localizedDescription))"
-        }
-    }
-
-    /// scan_<name>/ 폴더를 zip으로 묶어 반환한다. 완료 콜백은 메인 스레드에서 호출된다.
-    func exportZip(completion: @escaping (URL?) -> Void) {
-        guard let dir = lastOutputDir else {
-            completion(nil)
-            return
-        }
-        DispatchQueue.global(qos: .userInitiated).async {
-            let zipURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent(dir.lastPathComponent + ".zip")
-            do {
-                try ZipArchiver.zip(directory: dir, to: zipURL)
-                DispatchQueue.main.async { completion(zipURL) }
-            } catch {
-                DispatchQueue.main.async { completion(nil) }
-            }
         }
     }
 
@@ -336,5 +323,39 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         case .notAvailable: return "notAvailable"
         case .limited: return "limited"
         }
+    }
+}
+
+// MARK: - 실시간 mesh 프리뷰 (ARSCNViewDelegate)
+
+/// 스캔 중 카메라 화면 위에 지금까지 재구성된 LiDAR mesh를 반투명 와이어프레임으로
+/// 겹쳐 그린다 — 어디를 아직 못 찍었는지 스캔하면서 바로 알 수 있게 하기 위함
+/// (지도 커버리지 부족 문제를 스캔 단계에서 예방). scan.usdz export(MeshExporter)와
+/// 동일한 vertex/normal 파싱 로직을 재사용하되, 여기서는 anchor.transform을 다시
+/// 적용하지 않는다 — ARSCNView가 콜백으로 주는 node를 이미 그 anchor의 위치에
+/// 놔주기 때문(이중 적용하면 mesh가 엉뚱한 곳에 렌더링된다).
+extension ScanSessionManager: ARSCNViewDelegate {
+    private static let liveMeshMaterial: SCNMaterial = {
+        let material = SCNMaterial()
+        material.diffuse.contents = UIColor.cyan
+        material.fillMode = .lines
+        material.isDoubleSided = true
+        return material
+    }()
+
+    func renderer(_ renderer: SCNSceneRenderer, didAdd node: SCNNode, for anchor: ARAnchor) {
+        updateMeshVisualization(node: node, anchor: anchor)
+    }
+
+    func renderer(_ renderer: SCNSceneRenderer, didUpdate node: SCNNode, for anchor: ARAnchor) {
+        updateMeshVisualization(node: node, anchor: anchor)
+    }
+
+    private func updateMeshVisualization(node: SCNNode, anchor: ARAnchor) {
+        guard let meshAnchor = anchor as? ARMeshAnchor,
+              let geometry = MeshExporter.scnGeometry(for: meshAnchor, worldSpace: false)
+        else { return }
+        geometry.materials = [Self.liveMeshMaterial]
+        node.geometry = geometry
     }
 }
