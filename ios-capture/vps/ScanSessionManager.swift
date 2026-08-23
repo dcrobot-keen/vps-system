@@ -31,7 +31,7 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
 
     private var lastCaptureTimestamp: TimeInterval = 0
     private var lastCameraPosition: simd_float3?
-    private let captureIntervalSeconds: TimeInterval = 0.4
+    private let captureIntervalSeconds: TimeInterval = 0.1
     private let captureMinDistanceMeters: Float = 0.2
 
     // MARK: - 스캔 가이드 임계값
@@ -243,7 +243,7 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
 
     // MARK: - Capture throttling
 
-    /// 시간 간격(0.4s) 또는 이동거리(0.2m) 기준으로 프레임을 샘플링한다.
+    /// 시간 간격(0.1s) 또는 이동거리(0.2m) 기준으로 프레임을 샘플링한다.
     /// 60fps 그대로 저장하면 몇 분 스캔에도 수만 장이 쌓이므로 스로틀링이 필수다.
     private func shouldCapture(_ frame: ARFrame) -> Bool {
         guard frame.camera.trackingState == .normal else { return false }
