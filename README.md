@@ -84,6 +84,17 @@ dc-vps/
 - [x] server FastAPI 쿼리 서버 구현 (`/localize` 구현 + 실데이터/실사진 검증 완료,
       모델 캐싱으로 쿼리당 30초~1분 → 10~20초대로 개선. 합성 DB 기반 회귀 테스트도
       `server/tests/`에 마련)
+- [x] room 판별 모호성 처리 — 1등/2등 room의 inlier 격차가 부족하면(`MIN_INLIER_MARGIN_RATIO`)
+      성공 대신 실패로 유보. 실제 다중 room 테스트에서 같은 사진이 서로 다른 room으로
+      번갈아 매칭되던 사례를 잡아내는 것까지 확인 (2026-08-23)
+- [x] room 라이프사이클 — `/rooms` API(`POST`/`DELETE`/`GET`)로 이미 빌드된 DB를 서버
+      재시작·모델 재로드 없이 등록/해제. `rooms_manifest.json`으로 재시작해도 유지됨
+      (2026-08-23)
+- [x] 서빙 성능 튜닝 — 진짜 병목이 GPU가 아니라 PnP+RANSAC(CPU, pycolmap 기본
+      옵션)이었던 것을 프로파일링으로 찾아내서 confidence/thread 튜닝으로 room당
+      1.6초 → 0.17초(~9배). `/localize`도 스레드풀로 돌려서 이벤트 루프 안 막게 함.
+      실측 결과 GPU 1개로는 초당 ~2건이 상한선 — 배치 서빙 또는 수평 확장이 다음 단계
+      (`server/README.md` "성능/처리량" 참고) (2026-08-23)
 - [ ] Nav2/robot_localization 통합 (`ros2_ws/src/dc_vps_bridge/` — colcon build/ros2 launch,
       scan-to-map-studio tf 자동 lookup+fallback 로직까지 실제 검증 완료. 로봇/카메라/Nav2
       스택이 없어 실제 이미지 토픽으로 VPS 쿼리하는 end-to-end 흐름은 미검증)

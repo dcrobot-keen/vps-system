@@ -6,7 +6,8 @@
 3. 후보를 방(room)별로 묶어서, 각 방마다 LightGlue로 2D-2D 매칭 -> 매칭된 DB keypoint의
    3D 좌표(kp_to_3d_db) 가져오기
 4. 방마다 2D(쿼리)-3D(world) 대응점으로 pycolmap.estimate_and_refine_absolute_pose
-   (PnP+RANSAC) 시도 -> inlier가 제일 많은 방의 결과를 채택
+   (PnP+RANSAC) 시도 -> inlier가 제일 많은 방을 채택하되, 2등 방과의 격차가
+   MIN_INLIER_MARGIN_RATIO 미만이면(room 판별이 모호하면) 실패로 처리
 
 db_build.py가 만든 kp_to_3d_db.pkl + hloc feature/global descriptor 파일을 로드해서 사용한다.
 
@@ -26,7 +27,9 @@ hloc.extract_features.ImageDataset/main()의 로직을 그대로 옮겨왔다 �
 
 from __future__ import annotations
 
+import os
 import pickle
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -54,6 +57,28 @@ MATCHER_CONF = match_features.confs[pipeline_config.MATCHER_CONF]
 # PnP+RANSAC inlier가 이보다 적으면 위치 추정 실패로 간주한다.
 MIN_INLIERS = 12
 
+# 1등 room의 inlier가 2등 room의 inlier보다 이 배수 미만이면 "room 판별 자체가
+# 모호함"으로 보고 실패 처리한다 (둘 다 MIN_INLIERS를 넘겨도 마찬가지). retrieval이
+# 실제로 room을 가로질러 top-k를 검색하기 때문에, 어떤 쿼리는 전혀 다른 두 room에서
+# 둘 다 임계값 근처의 inlier가 나올 수 있다 -- 이 경우 1등을 그냥 채택하면 로봇이
+# 완전히 다른 room의 좌표계로 튈 위험이 있으므로, 애매하면 틀린 room을 확신하고
+# 리턴하는 대신 실패로 유보한다. PnP는 room마다 이미 CPU에서 전부 돌기 때문에 이
+# 검사는 추가 모델 추론(GPU) 없이 이미 계산된 결과를 비교만 한다.
+MIN_INLIER_MARGIN_RATIO = 1.5
+
+# pycolmap의 기본 RANSAC 옵션(confidence=0.99999, num_threads=1)은 룸 하나당
+# PnP+RANSAC이 1.5초 가까이 걸리게 만든다 -- 프로파일링해보니(2026-08-23) 이게
+# GPU 추론(SuperPoint+NetVLAD+LightGlue, room 6개/후보 20개 기준 ~0.6초)보다도
+# 훨씬 큰 병목이었다. num_threads를 늘리는 쪽이 지배적 요인(1 -> 8 스레드로 6~7배)이고,
+# confidence를 0.999로 낮추는 것도 보탬이 된다(신뢰도 99.9%면 로봇 위치 추정 용도로는
+# 충분 -- 논문 벤치마크 수준의 5-nines가 필요한 게 아니다). 코어 16개 기준 8스레드로
+# 맞춰서 동시 요청 여지를 절반 남겨둔다.
+PNP_RANSAC_CONFIDENCE = 0.999
+# 동시 요청이 많은 배포에서는 요청당 스레드를 줄여야 전체 처리량이 오히려 좋아질 수
+# 있다(코어 수는 고정인데 요청마다 이 스레드를 다 쓰면 동시 요청끼리 서로 밟는다) --
+# DC_VPS_PNP_THREADS로 배포 환경에 맞게 조정한다.
+PNP_RANSAC_NUM_THREADS = int(os.environ.get("DC_VPS_PNP_THREADS", min(8, os.cpu_count() or 1)))
+
 
 @dataclass
 class LocalizationResult:
@@ -62,7 +87,42 @@ class LocalizationResult:
     translation: list[float] | None = None  # [x, y, z], 해당 room의 world 좌표계
     quaternion: list[float] | None = None  # [qx, qy, qz, qw]
     num_inliers: int = 0
+    runner_up_room_id: str | None = None  # 2등 room (모호성 판단/관측용, 없으면 None)
+    runner_up_inliers: int = 0
     reason: str | None = None
+
+
+def _select_best_room(
+    room_inliers: list[tuple[str, int]],
+    min_inliers: int = MIN_INLIERS,
+    margin_ratio: float = MIN_INLIER_MARGIN_RATIO,
+) -> tuple[str | None, int, str | None, int, str | None]:
+    """PnP를 시도한 각 room의 (room_id, num_inliers) 목록에서 채택할 room을 고른다.
+
+    반환: (best_room_id, best_inliers, runner_up_room_id, runner_up_inliers, failure_reason).
+    failure_reason이 None이 아니면 실패 -- best_room_id는 참고용(디버깅)일 뿐 채택되지 않는다.
+    """
+    if not room_inliers:
+        return None, 0, None, 0, "모든 후보 room에서 PnP+RANSAC 실패"
+
+    ranked = sorted(room_inliers, key=lambda item: item[1], reverse=True)
+    best_room_id, best_inliers = ranked[0]
+    runner_up_room_id, runner_up_inliers = ranked[1] if len(ranked) > 1 else (None, 0)
+
+    if best_inliers < min_inliers:
+        return (
+            best_room_id, best_inliers, runner_up_room_id, runner_up_inliers,
+            f"PnP 실패 또는 inlier 부족 (num_inliers={best_inliers})",
+        )
+
+    if runner_up_inliers > 0 and best_inliers < margin_ratio * runner_up_inliers:
+        return (
+            best_room_id, best_inliers, runner_up_room_id, runner_up_inliers,
+            f"room 매칭이 모호함: '{best_room_id}'({best_inliers} inliers) vs "
+            f"'{runner_up_room_id}'({runner_up_inliers} inliers) — {margin_ratio}배 격차 미달",
+        )
+
+    return best_room_id, best_inliers, runner_up_room_id, runner_up_inliers, None
 
 
 @dataclass
@@ -88,9 +148,13 @@ def _read_image_bytes(image_bytes: bytes, grayscale: bool) -> np.ndarray:
 
 class Localizer:
     def __init__(self, db_dirs: list[Path]):
-        if not db_dirs:
-            raise ValueError("db_dirs가 비어 있습니다 — DB 디렉터리를 최소 하나 지정하세요")
-
+        # room을 서버 재시작 없이 add_room()/remove_room()으로 추가/제거할 수 있다 —
+        # 이 lock은 그 변경(rooms dict 교체 + retrieval index 재계산)과 localize() 중의
+        # 읽기가 겹치지 않게 보호한다. add_room/remove_room은 I/O(h5/pickle 로드)와 작은
+        # 행렬 연산뿐이라 GPU를 쓰지 않는다 -- 무거운 건 DB를 새로 "빌드"하는 쪽
+        # (pipeline/db_build.py, SuperPoint/NetVLAD 추출)이고 그건 이 클래스의 책임이
+        # 아니다: 여기는 이미 빌드된 DB 디렉터리를 등록/해제하는 것만 담당한다.
+        self._lock = threading.Lock()
         self.rooms: dict[str, _RoomDB] = {}
         for db_dir in db_dirs:
             room = self._load_room(db_dir)
@@ -99,15 +163,7 @@ class Localizer:
                     f"room_id가 중복됩니다: '{room.room_id}' — DB 디렉터리 이름이 겹치지 않게 하세요"
                 )
             self.rooms[room.room_id] = room
-
-        # NetVLAD retrieval은 room 경계 없이 전체를 한 번에 검색한다 (매칭/PnP만 room
-        # 단위로 분리 — room마다 world 좌표계가 달라서 섞어 쓸 수 없다).
-        self.retrieval_index: list[tuple[str, str]] = []  # (room_id, image_name)
-        all_descs = []
-        for room in self.rooms.values():
-            all_descs.append(room.db_global_descs)
-            self.retrieval_index.extend((room.room_id, name) for name in room.db_names)
-        self.all_global_descs = np.concatenate(all_descs, axis=0)
+        self._rebuild_retrieval_index()
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.superpoint_model = (
@@ -158,6 +214,47 @@ class Localizer:
             db_global_descs=db_global_descs,
         )
 
+    def _rebuild_retrieval_index(self) -> None:
+        """self.rooms가 바뀔 때마다(add_room/remove_room/__init__) NetVLAD retrieval용
+        전역 배열을 다시 만든다. room이 하나도 없어도(zero-room 상태) 동작해야 한다 —
+        방금 막 뜬 서버에 아직 room을 하나도 등록 안 한 경우가 정상 상태이기 때문."""
+        self.retrieval_index: list[tuple[str, str]] = []  # (room_id, image_name)
+        all_descs = [room.db_global_descs for room in self.rooms.values()]
+        self.all_global_descs = (
+            np.concatenate(all_descs, axis=0) if all_descs else np.zeros((0, 0))
+        )
+        for room in self.rooms.values():
+            self.retrieval_index.extend((room.room_id, name) for name in room.db_names)
+
+    def add_room(self, db_dir: Path, replace: bool = False) -> str:
+        """이미 빌드된 DB 디렉터리(pipeline/db_build.py 산출물)를 서버 재시작 없이
+        등록한다. room_id는 디렉터리 이름 -- 이미 로드돼 있으면 replace=True일 때만
+        덮어쓴다(재스캔 후 DB를 갱신하는 용도). 반환값은 등록된 room_id."""
+        room = self._load_room(db_dir)
+        with self._lock:
+            if room.room_id in self.rooms and not replace:
+                raise ValueError(
+                    f"room_id '{room.room_id}'가 이미 로드돼 있습니다 "
+                    "(갱신하려면 replace=True)"
+                )
+            self.rooms[room.room_id] = room
+            self._rebuild_retrieval_index()
+        return room.room_id
+
+    def remove_room(self, room_id: str) -> None:
+        with self._lock:
+            if room_id not in self.rooms:
+                raise KeyError(f"room_id '{room_id}'가 로드돼 있지 않습니다")
+            del self.rooms[room_id]
+            self._rebuild_retrieval_index()
+
+    def list_rooms(self) -> list[dict]:
+        with self._lock:
+            return [
+                {"room_id": room.room_id, "num_images": len(room.db_names)}
+                for room in self.rooms.values()
+            ]
+
     def localize(
         self,
         image_bytes: bytes,
@@ -189,35 +286,48 @@ class Localizer:
             "params": [fx, fy, cx, cy],
         }
 
-        best: LocalizationResult | None = None
+        pnp_options = pycolmap.AbsolutePoseEstimationOptions()
+        pnp_options.ransac.confidence = PNP_RANSAC_CONFIDENCE
+        pnp_options.ransac.num_threads = PNP_RANSAC_NUM_THREADS
+
+        room_rets: dict[str, dict] = {}
         for room_id, (points2d, points3d) in correspondences_by_room.items():
             if len(points2d) < 4:
                 continue
             ret = pycolmap.estimate_and_refine_absolute_pose(
-                points2d, points3d, camera, pycolmap.AbsolutePoseEstimationOptions()
+                points2d, points3d, camera, pnp_options
             )
-            if ret is None or ret["num_inliers"] < MIN_INLIERS:
-                continue
+            if ret is not None:
+                room_rets[room_id] = ret
 
-            # cam_from_world(world->camera)를 world_from_cam(camera->world)으로 뒤집는다 —
-            # poses.jsonl의 camera_transform과 동일하게 "카메라의 world 좌표계 pose"로 리턴.
-            world_from_cam = ret["cam_from_world"].inverse()
-            qx, qy, qz, qw = world_from_cam.rotation.quat
-            candidate_result = LocalizationResult(
-                success=True,
-                room_id=room_id,
-                translation=world_from_cam.translation.tolist(),
-                quaternion=[float(qx), float(qy), float(qz), float(qw)],
-                num_inliers=ret["num_inliers"],
-            )
-            if best is None or candidate_result.num_inliers > best.num_inliers:
-                best = candidate_result
+        room_inliers = [(room_id, ret["num_inliers"]) for room_id, ret in room_rets.items()]
+        best_room_id, best_inliers, runner_up_room_id, runner_up_inliers, failure_reason = (
+            _select_best_room(room_inliers)
+        )
 
-        if best is None:
+        if failure_reason is not None:
             return LocalizationResult(
-                success=False, reason="모든 후보 room에서 PnP+RANSAC 실패 또는 inlier 부족"
+                success=False,
+                num_inliers=best_inliers,
+                runner_up_room_id=runner_up_room_id,
+                runner_up_inliers=runner_up_inliers,
+                reason=failure_reason,
             )
-        return best
+
+        best_ret = room_rets[best_room_id]
+        # cam_from_world(world->camera)를 world_from_cam(camera->world)으로 뒤집는다 —
+        # poses.jsonl의 camera_transform과 동일하게 "카메라의 world 좌표계 pose"로 리턴.
+        world_from_cam = best_ret["cam_from_world"].inverse()
+        qx, qy, qz, qw = world_from_cam.rotation.quat
+        return LocalizationResult(
+            success=True,
+            room_id=best_room_id,
+            translation=world_from_cam.translation.tolist(),
+            quaternion=[float(qx), float(qy), float(qz), float(qw)],
+            num_inliers=best_inliers,
+            runner_up_room_id=runner_up_room_id,
+            runner_up_inliers=runner_up_inliers,
+        )
 
     # MARK: - feature extraction (hloc.extract_features의 전처리/후처리를 인메모리로 재현)
 
@@ -263,6 +373,8 @@ class Localizer:
 
     def _retrieve_candidates(self, query_desc: np.ndarray) -> list[tuple[str, str]]:
         """전체 room을 가로질러 top-k를 검색한다. 반환값은 (room_id, image_name) 목록."""
+        if not self.retrieval_index:  # room이 하나도 등록 안 된 상태
+            return []
         query_desc = query_desc.astype(np.float64)
         query_desc = query_desc / np.linalg.norm(query_desc)
 

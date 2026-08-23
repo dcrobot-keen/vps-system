@@ -12,6 +12,7 @@ venv/
 *.egg-info/
 outputs/
 third_party/
+rooms_manifest.json
 _e2e_scan/
 _e2e_out/
 .pytest_cache/
