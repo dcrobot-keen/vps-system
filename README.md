@@ -30,26 +30,38 @@ scan 폴더
   → keypoint별 3D 좌표 테이블(DB) 확보 (COLMAP 삼각측량 불필요)
 
 [로컬라이제이션 서버] (server/)
-쿼리 이미지 수신
-  → SuperPoint 추출
-  → NetVLAD로 DB 후보 top-k 검색 (pairs_from_retrieval)
-  → LightGlue로 2D-2D 매칭 → 대응하는 3D 좌표 확보
-  → PnP+RANSAC (pycolmap.absolute_pose_estimation) → 6DoF pose
+쿼리 이미지 + intrinsics 수신
+  → SuperPoint + NetVLAD 추출 (hloc.extract_features 재사용)
+  → NetVLAD 코사인 유사도로 DB 후보 top-k 검색
+  → LightGlue로 2D-2D 매칭 → 대응하는 3D 좌표 확보 (kp_to_3d_db.pkl)
+  → PnP+RANSAC (pycolmap.estimate_and_refine_absolute_pose) → 6DoF pose
   → JSON으로 리턴
 
-[로봇/Nav2 통합]
-리턴된 pose를 robot_localization EKF의 한 입력 소스로 fusion, 또는 amcl 초기화/보정에 사용.
-hloc world 좌표계와 occupancy grid 좌표계는 최초 스캔 시 origin 캘리브레이션으로 정합한다.
+[로봇/Nav2 통합] (ros2_ws/src/dc_vps_bridge/)
+로봇 카메라 토픽을 주기적으로 서버에 쿼리 → 리턴된 pose를 map 프레임으로 캘리브레이션
+변환 → PoseWithCovarianceStamped 퍼블리시. robot_localization EKF의 한 입력 소스로
+fusion하거나, amcl `/initialpose`로 remap해서 재측위에 사용.
+
+[map 프레임 캘리브레이션] (pipeline/export_pointcloud.py + scan-to-map-studio, 외부 저장소)
+같은 스캔에서 뽑은 world-frame 포인트클라우드를 별도 프로젝트
+github.com/dcrobot-keen/scan-to-map-studio에 넣으면(천장 제거 → 2D occupancy grid →
+로봇 SLAM 지도와 ICP 정합) `scan_basemap <-> map` ROS tf가 나온다 — 같은 world
+좌표계를 공유하므로 이 tf를 VPS pose에도 그대로 적용해서 hloc world와 occupancy
+grid 좌표계를 정합한다 (로봇이 없어 수동으로만 하던 origin 캘리브레이션의 대체 경로).
+dc_vps_bridge가 이 tf를 tf2_ros로 자동 lookup해서 적용하고, tf가 없으면 수동
+캘리브레이션 파라미터로 폴백한다 — 둘 다 실제 static_transform_publisher로 검증
+완료. 로봇의 실제 SLAM 지도로 두 파이프라인을 엮어서 끝까지 돌려본 적은 아직 없음.
 ```
 
 ## 폴더 구조
 
 ```
 dc-vps/
-├── ios-capture/        # ARKit 캡처 앱 (Swift, Xcode에서 열어서 사용)
-├── pipeline/            # DB 빌드 파이프라인 (Python, hloc 기반)
-├── server/              # FastAPI 로컬라이제이션(VL) 서버
-└── data/                # 스캔 데이터 (git에 커밋하지 않음)
+├── ios-capture/                   # ARKit 캡처 앱 (Swift, Xcode에서 열어서 사용)
+├── pipeline/                      # DB 빌드 파이프라인 (Python, hloc 기반)
+├── server/                        # FastAPI 로컬라이제이션(VL) 서버
+├── ros2_ws/src/dc_vps_bridge/     # ROS2(Humble) Nav2 연동 브리지 노드
+└── data/                          # 스캔 데이터 (git에 커밋하지 않음)
 ```
 
 ## 정합(depth-RGB alignment) 핵심 규칙
@@ -66,9 +78,28 @@ dc-vps/
 
 - [x] 아키텍처 설계
 - [x] 프로젝트 스캐폴딩
-- [ ] ios-capture 앱 구현 (Xcode 프로젝트로 변환 필요, macOS에서 진행 중)
-- [x] pipeline DB 빌드 스크립트 구현/검증 (합성 scan 기반 자동화 테스트로 회귀 검증,
-      `pipeline/tests/`. 실 iPhone 데이터로는 아직 미검증)
-- [x] server FastAPI 쿼리 서버 구현 (SuperPoint/NetVLAD/LightGlue/PnP, `server/tests/`로
-      합성 DB 기반 회귀 검증. 실 카메라/실 DB 조합으로는 아직 미검증)
-- [ ] Nav2/robot_localization 통합
+- [x] ios-capture 앱 구현 (Xcode 프로젝트 포함, 실기기 빌드·스캔까지 검증 완료)
+- [x] pipeline DB 빌드 스크립트 구현/검증 (실제 스캔 데이터로 end-to-end 검증 완료.
+      합성 scan 기반 자동화 회귀 테스트도 `pipeline/tests/`에 마련)
+- [x] server FastAPI 쿼리 서버 구현 (`/localize` 구현 + 실데이터/실사진 검증 완료,
+      모델 캐싱으로 쿼리당 30초~1분 → 10~20초대로 개선. 합성 DB 기반 회귀 테스트도
+      `server/tests/`에 마련)
+- [ ] Nav2/robot_localization 통합 (`ros2_ws/src/dc_vps_bridge/` — colcon build/ros2 launch,
+      scan-to-map-studio tf 자동 lookup+fallback 로직까지 실제 검증 완료. 로봇/카메라/Nav2
+      스택이 없어 실제 이미지 토픽으로 VPS 쿼리하는 end-to-end 흐름은 미검증)
+- [x] scan-to-map-studio 연동 오케스트레이터 (`pipeline/dc_vps_pipeline/orchestrate.py`) —
+      스캔 폴더 하나로 hloc DB + 포인트클라우드 + (scan-to-map-studio 체크아웃이 있으면)
+      2D 지도/report.html까지 한 명령으로. scan-to-map-studio 쪽에 `--ply` 입력 옵션을
+      추가해야 동작하는데(원래 `.usdz`만 받음), 그 변경까지 포함해서 실제 스캔 데이터로
+      전체 체인 end-to-end 검증 완료
+- [x] 여러 방(room) 지원 — server가 `DC_VPS_DB_DIRS`로 DB 여러 개를 동시에 서빙하고
+      쿼리와 매칭된 room을 자동 판별(`room_id`), `dc_vps_bridge`는 그 room에 맞는
+      `scan_basemap_<room_id>` tf를 자동으로 찾아 씀 — 방끼리 서로 겹쳐 찍지 않아도
+      로봇의 공용 map 프레임으로 이어붙일 수 있음. retrieval이 room 경계를 넘나들지
+      않는 것, 3D 정보 없는 room이 자동으로 배제되는 것까지 실데이터로 검증 완료
+- [x] `scan.usdz` 동시 캡처(`ios-capture/vps/MeshExporter.swift`) — ARKit
+      sceneReconstruction으로 스캔 중 실시간으로 만들어지는 LiDAR mesh를 같은 세션에서
+      `scan.usdz`로 함께 저장. `export_pointcloud.py`(depth 기반)보다 지도 커버리지가
+      훨씬 좋음(실측: free 셀 1121개 → 6097개), `orchestrate.py`가 있으면 자동으로
+      우선 사용. 실기기 검증 완료 (ModelIO 브릿지 API들이 최신 SDK에 없어서 SceneKit
+      고유 API로 재작성한 뒤 성공)

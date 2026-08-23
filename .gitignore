@@ -16,11 +16,23 @@ _e2e_scan/
 _e2e_out/
 .pytest_cache/
 
+# ros2 (colcon build artifacts)
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+
 # ios / xcode
-*.xcodeproj/xcuserdata/
-*.xcworkspace/xcuserdata/
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
 DerivedData/
 .build/
+
+# swift package manager
+.swiftpm/
+Packages/
+Package.resolved
 
 # os
 .DS_Store

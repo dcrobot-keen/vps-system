@@ -4,20 +4,29 @@ pipeline이 빌드한 DB를 로드해서 쿼리 이미지 -> 6DoF pose를 리턴
 
 ## 설치
 
-hloc(SuperPoint/NetVLAD/LightGlue)이 필요하다. `pipeline/README.md`대로
-`pipeline/third_party/Hierarchical-Localization`을 `--recursive`로 clone해둔 뒤 진행할 것
-(pipeline과 server가 같은 clone을 공유해서 editable 설치한다).
+이 서버도 쿼리 이미지에서 직접 SuperPoint/NetVLAD/LightGlue를 돌리기 때문에, pipeline과
+동일하게 hloc + pycolmap이 필요하다. pipeline에서 이미 `--recursive`로 clone해둔
+`third_party/Hierarchical-Localization`을 재사용해서 다시 clone할 필요는 없다.
 
-```
+```bash
 python -m venv .venv
-.venv\Scripts\activate
+source .venv/bin/activate   # Windows는 .venv\Scripts\activate
 pip install -r requirements.txt
+pip install -e ../pipeline/third_party/Hierarchical-Localization
+pip install -e ../pipeline   # dc_vps_pipeline.config를 그대로 import하기 위해 (아래 참고)
 ```
 
 ## 실행
 
+단일 방(DB 하나):
+```bash
+export DC_VPS_DB_DIR=../pipeline/outputs/<scan_name>
+uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
-set DC_VPS_DB_DIR=..\pipeline\outputs\<scan_name>
+
+여러 방(DB 여러 개, 콤마로 구분 — 아래 "여러 방" 참고):
+```bash
+export DC_VPS_DB_DIRS=../pipeline/outputs/scan_room_a,../pipeline/outputs/scan_room_b
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
@@ -29,26 +38,68 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 - `GET /health` — 헬스체크
 - `POST /localize` — multipart form.
-  - `image`: 쿼리 이미지
-  - `fx`, `fy`, `cx`, `cy`: 쿼리 카메라 intrinsics (쿼리 이미지 해상도 기준)
-  - `width`, `height`: 쿼리 이미지 해상도
+  - `image`: 쿼리 이미지 파일
+  - `fx`, `fy`, `cx`, `cy`, `width`, `height`: 쿼리 이미지를 찍은 카메라의 intrinsics
+    (PnP에 필수 — 쿼리 카메라가 스캔에 쓴 iPhone과 다를 수 있으므로 매 요청마다 받는다)
+  - 성공 시 `{"room_id": "scan_...", "translation": [x,y,z], "quaternion": [qx,qy,qz,qw], "num_inliers": N}`
+    리턴 (world 좌표계 기준 카메라 pose, `ios-capture`의 poses.jsonl `camera_transform`과
+    동일한 camera-to-world 컨벤션. `room_id`는 매칭된 DB 디렉터리 이름 — 아래 "여러 방"
+    참고). 매칭 실패/inlier 부족 시 422.
 
-  DB를 만든 스캔 카메라와 쿼리 카메라(로봇/iPhone)의 렌즈/해상도가 다를 수 있어
-  intrinsics는 서버가 추정하지 않고 호출자가 매 요청마다 함께 보낸다.
+```bash
+curl -X POST http://localhost:8000/localize \
+  -F "image=@query.jpg" \
+  -F "fx=1462.0" -F "fy=1462.0" -F "cx=966.5" -F "cy=720.7" \
+  -F "width=1920" -F "height=1440"
+```
 
-  성공 시 `{"translation": [x,y,z], "quaternion": [qx,qy,qz,qw], "num_inliers": N}` 리턴
-  (world 좌표계, camera-to-world). 매칭 실패/inlier 부족(< `config.MIN_INLIERS`)이면
-  422와 `{"detail": "..."}`을 리턴한다.
+## 여러 방(room)
 
-## 구현 (`app/localize.py`)
+`DC_VPS_DB_DIRS`로 여러 DB를 동시에 로드하면, 쿼리 이미지가 어느 DB(room)와
+매칭됐는지 자동으로 찾아준다. 각 DB 디렉터리 이름(보통 `scan_<name>`)이 그대로
+`room_id`가 된다 — 그러니 여러 방을 등록할 땐 디렉터리 이름이 겹치지 않아야 한다.
 
-1. 쿼리 이미지에서 SuperPoint 추출 (hloc.extract_features, 임시 디렉토리에 1장만)
-2. NetVLAD로 DB에서 top-k(`config.RETRIEVAL_TOP_K`, DB 이미지 수보다 크면 클램프) 후보 검색
-3. LightGlue로 쿼리-후보 2D-2D 매칭 -> 매칭된 DB keypoint의 3D 좌표(`kp_to_3d_db.pkl`) 확보
-4. `pycolmap.estimate_and_refine_absolute_pose`(PnP+RANSAC)로 world-to-camera pose 추정,
-   `num_inliers < MIN_INLIERS`면 실패 처리
-5. pycolmap이 리턴하는 world-to-camera를 `.inverse()`로 뒤집어 camera-to-world로 변환해서 리턴
-   (ARKit camera_transform/db_build.py와 관례를 맞추기 위함)
+동작 방식: NetVLAD retrieval은 room 경계 없이 전체 DB를 가로질러 top-k를 찾고,
+그 후보를 room별로 묶어서 room마다 따로 LightGlue 매칭 + PnP를 시도한 뒤 inlier가
+제일 많은 room의 결과를 채택한다 (서로 다른 room은 world 좌표계가 다른 별도
+스캔이라, 한 PnP에 여러 room의 3D 점을 섞어 쓸 수 없어서 이렇게 분리했다). 방
+개수가 늘수록 room마다 PnP를 시도할 수 있어 쿼리가 느려질 수 있다.
+
+`ros2_ws/src/dc_vps_bridge`는 응답의 `room_id`를 보고 그 room에 맞는
+`scan_basemap_<room_id>` tf(scan-to-map-studio로 각 room을 로봇 map에 각각
+등록한 결과)를 자동으로 찾아 쓴다 — 방마다 서로 다른 world 좌표계를 로봇의 공용
+`map` 프레임 하나로 이어붙이는 방식이다 (pipeline/README.md 참고). 실제로 DB 2개
+(하나는 복제본)를 동시에 로드해서 retrieval이 room 경계를 넘나들지 않고, 3D 정보가
+없는 room은 자동으로 걸러지고 다른 room이 정확히 선택되는 것까지 검증함
+(2026-08-17).
+
+## 구현 메모
+
+`app/localize.py`의 `Localizer.__init__`에서 SuperPoint/NetVLAD/LightGlue 모델을
+**서버 시작 시 한 번만** 로드해서 인스턴스에 캐싱해둔다. `localize()`는 이미 로드된
+모델로 쿼리 이미지를 바로 처리한다 — 전처리(리사이즈/grayscale)와 후처리(keypoint를
+원본 해상도로 역스케일)는 `hloc.extract_features.ImageDataset`/`main()`의 로직을
+인메모리로 그대로 옮겨왔고, 매칭은 `hloc.match_features.FeaturePairsDataset`의 텐서
+포맷을 그대로 재현해서 캐싱된 LightGlue 모델에 직접 넣는다. DB 빌드 때와 동일한
+좌표 변환이라 좌표계가 어긋나지 않는다 (실제 스캔 프레임 재입력 시 ground-truth와
+오차 수십 마이크로미터 수준으로 일치하는 것으로 검증함).
+
+NetVLAD 전역 디스크립터로 DB 후보 top-k(`RETRIEVAL_TOP_K`)를 코사인 유사도로 뽑고,
+LightGlue로 매칭한 뒤 매칭된 DB keypoint의 3D 좌표(`kp_to_3d_db.pkl`)를 모아
+PnP+RANSAC(`pycolmap.estimate_and_refine_absolute_pose`)으로 pose를 추정한다.
+
+**이전엔 요청마다 모델을 새로 로드해서 쿼리 1건에 30초~1분 걸렸는데, 캐싱 후엔
+서버 시작 시 모델 로딩에 ~5초, 이후 쿼리는 건당 10~20초대로 줄었다** (2026-08-17,
+Apple Silicon Mac, CPU 추론 기준). 여전히 실시간이라 부르긴 어렵지만 로봇 루프에
+붙이기엔 훨씬 현실적인 수준. 더 빠르게 하려면 GPU 추론이나 배치 처리가 다음 단계.
+
+`SUPERPOINT_CONF`/`RETRIEVAL_CONF`/`RETRIEVAL_TOP_K`/`MATCHER_CONF`는
+`pipeline/dc_vps_pipeline/config.py`와 반드시 같은 값을 써야 한다 (DB가 그 설정으로
+빌드됐기 때문). 예전엔 별도 venv라 값을 복제해뒀었는데, `pipeline/`에 최소
+`pyproject.toml`을 추가해서 이제 `pip install -e ../pipeline`로 server venv에
+`dc_vps_pipeline` 패키지를 editable 설치하고 `config.py`를 직접 import한다 — 값
+복제가 없어졌으니 pipeline 쪽 설정을 바꾸면 server도 재설치 없이 자동으로 따라간다
+(editable install이라 소스 변경이 바로 반영됨).
 
 ## 테스트
 

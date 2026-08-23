@@ -13,29 +13,27 @@ import io
 from pathlib import Path
 
 import numpy as np
-import pycolmap
 import pytest
-from dc_vps_pipeline import config as pipeline_config
 from dc_vps_pipeline.db_build import build_db
 from dc_vps_pipeline.testing import CX, CY, FX, FY, RGB_SIZE, FrameSpec, synthetic_rgb_texture, write_synthetic_scan
 from PIL import Image
 
-from app.localize import Localizer
+from app.localize import MIN_INLIERS, Localizer
 
 VALID_DEPTH = 2.0
 HIGH_CONFIDENCE = 2.0
-
-
-def _query_camera() -> pycolmap.Camera:
-    return pycolmap.Camera(
-        model="PINHOLE", width=RGB_SIZE[0], height=RGB_SIZE[1], params=[FX, FY, CX, CY]
-    )
 
 
 def _jpeg_bytes(rgb_array: np.ndarray) -> bytes:
     buf = io.BytesIO()
     Image.fromarray(rgb_array).save(buf, format="JPEG", quality=95)
     return buf.getvalue()
+
+
+def _localize(localizer: Localizer, image_bytes: bytes):
+    return localizer.localize(
+        image_bytes, fx=FX, fy=FY, cx=CX, cy=CY, width=RGB_SIZE[0], height=RGB_SIZE[1]
+    )
 
 
 @pytest.fixture(scope="module")
@@ -46,16 +44,16 @@ def localizer(tmp_path_factory: pytest.TempPathFactory) -> Localizer:
     ]
     write_synthetic_scan(base / "scan_test", frame_specs)
     build_db(base / "scan_test", base / "out")
-    return Localizer(base / "out")
+    return Localizer([base / "out"])
 
 
 def test_localize_recovers_identity_pose_for_db_frame(localizer: Localizer) -> None:
     query_bytes = _jpeg_bytes(synthetic_rgb_texture())  # seed=42, DB 프레임과 동일 텍스처
 
-    result = localizer.localize(query_bytes, _query_camera())
+    result = _localize(localizer, query_bytes)
 
     assert result.success, result.reason
-    assert result.num_inliers >= pipeline_config.MIN_INLIERS
+    assert result.num_inliers >= MIN_INLIERS
     assert np.allclose(result.translation, [0.0, 0.0, 0.0], atol=0.1)
     # quaternion은 [qx,qy,qz,qw]; identity 회전이면 w가 (부호 무관) 1에 가까워야 한다.
     assert abs(abs(result.quaternion[3]) - 1.0) < 0.02
@@ -65,7 +63,7 @@ def test_localize_recovers_identity_pose_for_db_frame(localizer: Localizer) -> N
 def test_localize_fails_for_unrelated_query_image(localizer: Localizer) -> None:
     query_bytes = _jpeg_bytes(synthetic_rgb_texture(seed=123))  # DB와 무관한 텍스처
 
-    result = localizer.localize(query_bytes, _query_camera())
+    result = _localize(localizer, query_bytes)
 
     assert not result.success
     assert result.reason
@@ -73,4 +71,4 @@ def test_localize_fails_for_unrelated_query_image(localizer: Localizer) -> None:
 
 def test_localize_raises_on_missing_db(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
-        Localizer(tmp_path / "does_not_exist")
+        Localizer([tmp_path / "does_not_exist"])
