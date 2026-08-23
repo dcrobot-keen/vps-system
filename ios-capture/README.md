@@ -72,6 +72,59 @@ draw call 38개)가 한계일 수 있어서, 뷰어용으로 단순화(decimatio
 저장(rgb/depth/poses, 있으면 scan.usdz, manifest.json), **"완료"** → 목록 화면으로
 복귀(목록이 새로고침되어 방금 만든 프로젝트가 보임).
 
+## 가져온 파일 뷰어 (GLB/PCD/PLY/USDZ/OBJ)
+
+앱 시작 화면이 `TabView`로 "프로젝트"/"가져온 파일" 두 탭이 됐다. "가져온 파일"
+탭(`ImportedFilesView`)은 이 앱이 직접 스캔한 게 아닌 외부 3D 결과물 —
+파이프라인이 뱉는 `.ply`, scan-to-map-studio의 `.glb`, Gaussian Splatting
+트랙(`dc-vps-digital-twin`)에서 나올 `.obj` 등 — 을 Files 문서 선택기로 가져와서
+목록으로 보여주고 탭하면 SceneKit으로 렌더링한다. LocalSend로 받은 파일을 Files
+앱에 저장해두면 여기서 바로 골라올 수 있다(위 "iOS → Windows 파일 전송" 참고).
+
+`glb`/`pcd`/`ply`/`usdz`/`obj` 다섯 확장자를 지원한다. `usdz`/`obj`는
+SceneKit/ModelIO가 iOS에서 기본 지원해서 `SCNScene(url:)`를 그대로 쓰지만, 나머지
+셋은 iOS SDK가 아예 못 읽어서 외부 의존성 없이 직접 파서를 구현했다
+(`GLBLoader.swift`/`PLYLoader.swift`/`PCDLoader.swift`, 공통 SCNGeometry 조립은
+`MeshGeometryBuilder.swift`):
+
+- **GLB**: 바이너리 glTF 2.0 컨테이너. POSITION/NORMAL/TEXCOORD_0 accessor(FLOAT만),
+  UNSIGNED_BYTE/SHORT/INT 인덱스, `baseColorFactor`/embedded `baseColorTexture`만
+  읽는다 — 스키닝/애니메이션/카메라/노드 계층 변환은 스코프 밖(모든 프리미티브를
+  루트에 변환 없이 평탄화).
+- **PLY**: ascii/binary_little_endian/binary_big_endian 다 지원. x/y/z(필수),
+  nx/ny/nz, red/green/blue만 읽고 나머지 커스텀 property는 건너뛴다. face가
+  삼각형이 아니면(예: quad) fan triangulation.
+  - **실측 검증**: 합성 ascii(quad, normal+color 포함)와 binary_little_endian(삼각형,
+    color 포함, normal 없음 → face normal 자동 계산 경로) 픽스처로 macOS에서
+    `PLYLoader`를 직접 실행해 정점/색/normal/삼각형 인덱스가 입력과 정확히
+    일치함을 확인함(fan triangulation `[0,1,2,3]` → `[0,1,2, 0,2,3]` 포함).
+- **PCD**: `DATA ascii`/`DATA binary` 지원(`binary_compressed`는 LZF 압축 해제가
+  필요해서 명시적으로 에러). x/y/z 필수, `rgb`/`rgba` 필드는 PCL 관례(float
+  bit pattern에 0x00RRGGBB)로 언패킹. 인덱스가 없어서 `.point` primitive로 렌더링.
+  - **실측 검증**: 합성 ascii/binary 픽스처(3점 + rgb)로 macOS에서 직접 실행해
+    좌표/색이 정확히 일치함을 확인함.
+- **GLB 검증 관련 메모**: 첫 검증 시도에서 raw 텍스트 덤프가 입력과 안 맞아 보였는데,
+  `SIMD3<Float>`가 (12바이트가 아니라) 16바이트 stride라는 이 세션 초반부터 반복
+  나온 함정을 검증 스크립트 자체가 반영 못 한 것이었다 — stride를 제대로 반영해서
+  다시 읽으니 3정점/인덱스 모두 입력과 정확히 일치. `GLBLoader.swift` 본체는
+  처음부터 `dataStride: vertexStride`(= `MemoryLayout<SIMD3<Float>>.stride`)를
+  정확히 선언하고 있어서 실제 버그는 아니었음.
+
+새 파일을 등록하는 방법은 파일 목록 화면 오른쪽 위 **+** → 표준 Files 문서
+선택기(`UIDocumentPickerViewController`, `UTType(filenameExtension:)`로 즉석
+타입 지정, 앱을 해당 타입의 "핸들러"로 등록할 필요 없음)로 고르면
+`Documents/imports/`에 복사된다. **Files 앱/공유 시트에서 "열기"로 직접 여는
+것(Info.plist `CFBundleDocumentTypes` 등록)은 아직 안 함** — 현재는 이 앱 안에서
+수동으로 가져오는 방식만 지원.
+
+**검증 상태**: 다섯 로더 모두 macOS 위 합성 파일 실행으로 파싱 정확성을 확인했고,
+`xcodebuild`로 시뮬레이터(iphonesimulator)/실기기(iphoneos) 아키텍처 둘 다 실제
+빌드 성공을 확인했다(이 과정에서 `swiftc -parse`가 못 잡는 실제 오타 —
+`ImportedFileStore.swift`의 `.contentModificationDate` → 존재하지 않는 멤버,
+`.contentModificationDateKey`가 맞음 — 를 하나 발견해서 고쳤다). **다만
+실기기에서 Files 선택기로 실제 파일을 가져와 화면에 렌더링까지 되는 런타임
+흐름은 아직 테스트 안 함.**
+
 ## 스캔 중 실시간 mesh 프리뷰
 
 카메라 화면 위에 지금까지 재구성된 LiDAR mesh를 반투명 와이어프레임(cyan)으로
@@ -188,6 +241,9 @@ scan-to-map-studio의 `remove_ceiling.py`→`rasterize_base_map.py`를 그대로
 - [x] `scan.usdz` 동시 캡처(`MeshExporter.swift`) 실기기 검증 완료 — 3번의 시행착오
       끝에 SceneKit 고유 API로 해결, scan-to-map-studio 파이프라인 통과까지 확인
 - [ ] 스캔 중 실시간 mesh 프리뷰 — 실기기 미검증 (위 "스캔 중 실시간 mesh 프리뷰" 참고)
+- [ ] 가져온 파일 뷰어(GLB/PCD/PLY/USDZ/OBJ) — macOS 합성 파일 검증 + xcodebuild
+      시뮬레이터/실기기 빌드 성공 확인, 실기기 런타임(실제 파일 가져오기/렌더링)
+      미검증 (위 "가져온 파일 뷰어" 참고)
 - [ ] 프로젝트 목록/삭제/내보내기 UI(`ProjectListView.swift`, `ProjectStore.swift`) —
       실기기 미검증. Swift 문법 파싱만 확인함. `ProjectStore.swift`는 최초 빌드에서
       `import Combine` 누락으로 컴파일 에러 발생, 수정함
