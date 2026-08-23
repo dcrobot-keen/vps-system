@@ -1,4 +1,9 @@
 -r ../pipeline/requirements.txt
+-e ../pipeline
+
+# hloc(SuperPoint/NetVLAD/LightGlue) + pycolmap. pipeline/README.md대로
+# pipeline/third_party/Hierarchical-Localization을 --recursive로 clone해둔 뒤 설치할 것.
+-e ../pipeline/third_party/Hierarchical-Localization
 
 fastapi
 uvicorn[standard]

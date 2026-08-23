@@ -30,6 +30,10 @@ export DC_VPS_DB_DIRS=../pipeline/outputs/scan_room_a,../pipeline/outputs/scan_r
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
+`DC_VPS_DB_DIR`는 `db_build.py`가 만든 `kp_to_3d_db.pkl` + feature(h5) 파일이 있는
+디렉토리를 가리켜야 한다. 앱 임포트 시점에 `Localizer`가 이 DB를 로드하므로, 없으면
+서버 시작 자체가 실패한다.
+
 ## API
 
 - `GET /health` — 헬스체크
@@ -96,3 +100,15 @@ Apple Silicon Mac, CPU 추론 기준). 여전히 실시간이라 부르긴 어�
 `dc_vps_pipeline` 패키지를 editable 설치하고 `config.py`를 직접 import한다 — 값
 복제가 없어졌으니 pipeline 쪽 설정을 바꾸면 server도 재설치 없이 자동으로 따라간다
 (editable install이라 소스 변경이 바로 반영됨).
+
+## 테스트
+
+pipeline과 동일하게 합성 scan(`dc_vps_pipeline.testing`)으로 DB를 빌드하고, 그 DB를
+만든 것과 동일한 쿼리 이미지로 로컬라이즈해서 identity pose(translation≈0,
+quaternion≈[0,0,0,1])가 복원되는지 검증한다. 검색/매칭/PnP 전체 경로에 대한
+sanity check.
+
+```
+pip install -r requirements-dev.txt
+python -m pytest tests/ -v
+```

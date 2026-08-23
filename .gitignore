@@ -14,6 +14,7 @@ outputs/
 third_party/
 _e2e_scan/
 _e2e_out/
+.pytest_cache/
 
 # ros2 (colcon build artifacts)
 ros2_ws/build/
