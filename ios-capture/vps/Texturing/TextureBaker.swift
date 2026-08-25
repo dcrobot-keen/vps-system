@@ -34,10 +34,12 @@ enum TextureBaker {
         var maxTextureSize: Int = 2048
         var weldEpsilon: Float = 0.003 // meters, project_photos_onto_lidar_mesh.py 기본값과 동일
         var blendPower: Float = 12.0
-        var depthPrepassMaxDimension: Int = 480
+        var depthPrepassMaxDimension: Int = 640
         var nearMeters: Float = 0.05
         var farMeters: Float = 20.0
-        var occlusionBias: Float = 0.0015
+        /// 미터 단위. depth pre-pass가 다운샘플 해상도라 원본 사진 해상도 기준으로
+        /// 계산한 픽셀이 정확히 같은 표면을 가리키지 않을 수 있어 이 정도 여유가 필요하다.
+        var occlusionBias: Float = 0.04
     }
 
     // MARK: - poses.jsonl
@@ -162,7 +164,7 @@ enum TextureBaker {
         let rawMesh = try MeshUnifier.load(usdzURL: usdzURL)
         let mesh = MeshUnifier.weld(rawMesh, epsilon: options.weldEpsilon)
         let faceCount = mesh.indices.count / 3
-        let faceNormals = MeshUnifier.computeFaceNormals(positions: mesh.positions, indices: mesh.indices)
+        var faceNormals = MeshUnifier.computeFaceNormals(positions: mesh.positions, indices: mesh.indices)
         let adjacency = MeshUnifier.buildFaceAdjacency(indices: mesh.indices)
 
         // 2. UV 아틀라스 (UVAtlasBuilder.swift)
@@ -171,6 +173,42 @@ enum TextureBaker {
         // 3. poses.jsonl
         let poses = try loadPoses(projectURL.appendingPathComponent("poses/poses.jsonl"))
         guard !poses.isEmpty else { throw BakeError.noPoses }
+
+        // 3.5. normal 방향 자동 보정. ARKit ARMeshAnchor의 실제 삼각형 winding이
+        // CCW-front-facing인지(cross(b-a,c-a)가 밖을 향함) 이 환경(Xcode 없음)에서
+        // 컴파일/실기기 검증할 방법이 없었다 — 만약 반대라면 모든 face normal이 안쪽을
+        // 향해서, atlasBakeFragment의 `cosAngle = max(dot(normal,viewDir),0)`가 항상
+        // 0으로 clamp되고 weight가 전부 0에 수렴해 텍셀이 하나도 안 써진 채(alpha=0)
+        // 전체가 홀 채우기 mid-gray로 덮인다 — 방금 실기기에서 재현된 "흑백 텍스쳐만
+        // 입혀짐" 증상과 정확히 일치한다. 실제 카메라 위치(스캔 내부, 벽을 바라봄)를
+        // 기준으로 부호를 점검해서, 뒤집혀 있으면 전역적으로 반전한다.
+        do {
+            let sampleCameraIndices = stride(from: 0, to: poses.count, by: max(1, poses.count / 8)).prefix(8)
+            let faceStride = max(1, faceCount / 3000)
+            var positiveVotes = 0
+            var negativeVotes = 0
+            for cameraIndex in sampleCameraIndices {
+                let camWorld4 = cameraToWorldMatrix(poses[cameraIndex].camera_transform).columns.3
+                let camWorld = SIMD3<Float>(camWorld4.x, camWorld4.y, camWorld4.z)
+                var f = 0
+                while f < faceCount {
+                    let a = mesh.positions[Int(mesh.indices[f * 3])]
+                    let b = mesh.positions[Int(mesh.indices[f * 3 + 1])]
+                    let c = mesh.positions[Int(mesh.indices[f * 3 + 2])]
+                    let centroid = (a + b + c) / 3
+                    let toCam = camWorld - centroid
+                    let dist = simd_length(toCam)
+                    if dist > 1e-3, dist < 8.0 {
+                        let d = simd_dot(faceNormals[f], toCam / dist)
+                        if d > 0.15 { positiveVotes += 1 } else if d < -0.15 { negativeVotes += 1 }
+                    }
+                    f += faceStride
+                }
+            }
+            if negativeVotes > positiveVotes * 2, negativeVotes > 20 {
+                for i in 0..<faceNormals.count { faceNormals[i] = -faceNormals[i] }
+            }
+        }
 
         // 4. 버퍼 준비 — packed_floatN과 바이트 단위로 맞춰야 하므로 SIMD3<Float>(Swift에서
         // stride 16) 대신 평탄 [Float](stride 12/8)로 직접 채운다.

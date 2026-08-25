@@ -117,14 +117,28 @@ fragment AtlasBakeFragmentOut atlasBakeFragment(
     // occlusion 체크: depth pre-pass와 동일한 투영으로 depth 텍스처 좌표를 구한다.
     // depthProjection이 이미 (u,v) = (pixelX/imageWidth, pixelY/imageHeight)와 같은
     // 정규화 좌표를 만들도록 만들어져 있으므로(TextureBaker.swift 참고) 그대로 재사용.
+    //
+    // NDC depth 그대로 비교하지 않고 실제(선형) 미터 단위 깊이로 되돌려서 비교한다 —
+    // NDC depth는 near/far 사이에서 비선형이라(우리 near=0.05,far=20 같은 넓은 범위에서)
+    // 고정된 NDC bias 하나로는 가까운 표면/먼 표면에 똑같이 안전한 여유를 줄 수 없다.
+    // depth pre-pass가 다운샘플 해상도라 앨리어싱으로 살짝 어긋나는 것까지 감안해서
+    // occlusionBias는 미터 단위로 받는다(TextureBaker.swift 기본값 참고).
     float2 depthUV = float2(pixelX / camera.imageWidth, pixelY / camera.imageHeight);
     constexpr sampler depthSampler(coord::normalized, filter::nearest, address::clamp_to_edge);
-    float storedDepth = occlusionDepth.sample(depthSampler, depthUV);
-    // depthProjection의 row2(A,B)만 필요: column-major m[col*4+row]에서 A=m[2*4+2]=m[10], B=m[3*4+2]=m[14].
-    float thisDepthNDC = camera.depthProjection[10] + camera.depthProjection[14] / camPos.z; // A + B/z, w-divide 후 값
-    if (thisDepthNDC > storedDepth + camera.occlusionBias) {
-        return out; // 다른 표면에 가려짐
+    float storedDepthNDC = occlusionDepth.sample(depthSampler, depthUV);
+    if (storedDepthNDC < 0.9999) {
+        // depthProjection의 row2(A,B): column-major m[col*4+row]에서 A=m[10], B=m[14].
+        // ndc = A + B/z 이므로 z = B/(ndc-A).
+        float A = camera.depthProjection[10];
+        float B = camera.depthProjection[14];
+        float storedZ = B / (storedDepthNDC - A);
+        if (camPos.z > storedZ + camera.occlusionBias) {
+            return out; // 다른 표면에 가려짐
+        }
     }
+    // storedDepthNDC가 far-clip 근처(대략 1.0, pre-pass가 이 텍셀에서 아무것도 못
+    // 그린 경우 — 다운샘플된 depth 버퍼가 놓친 좁은 틈/실루엣 경계 등)면 occlusion
+    // 정보가 없는 것으로 보고 보이는 것으로 취급한다(거부하지 않음).
 
     float3 cameraWorldPos = float3(camera.cameraWorldPosX, camera.cameraWorldPosY, camera.cameraWorldPosZ);
     float3 toCam = cameraWorldPos - in.worldPos;
