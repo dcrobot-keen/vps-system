@@ -52,7 +52,7 @@ enum PLYLoader {
 
     static func loadGeometry(at url: URL) throws -> SCNGeometry {
         let data = try Data(contentsOf: url)
-        var (format, vertexCount, vertexProps, faceCountProp, faceIndexType, headerEnd) = try parseHeader(data)
+        let (format, vertexCount, vertexProps, faceCountProp, faceIndexType, headerEnd) = try parseHeader(data)
 
         var positions: [SIMD3<Float>] = []
         var normals: [SIMD3<Float>]?
