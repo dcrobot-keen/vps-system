@@ -17,6 +17,12 @@ struct ProjectDetailView: View {
     @State private var isShowingMeshViewer = false
     @State private var rgbURLs: [URL] = []
 
+    @State private var hasTexturedGLB = false
+    @State private var isBaking = false
+    @State private var bakeProgress: TextureBaker.Progress?
+    @State private var bakeErrorMessage: String?
+    @State private var isShowingTexturedViewer = false
+
     private let columns = [GridItem(.adaptive(minimum: 90), spacing: 4)]
 
     var body: some View {
@@ -32,6 +38,8 @@ struct ProjectDetailView: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
+
+                    textureBakeSection
                 }
 
                 if !rgbURLs.isEmpty {
@@ -49,7 +57,10 @@ struct ProjectDetailView: View {
         }
         .navigationTitle(project.id)
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear(perform: loadRGBList)
+        .onAppear {
+            loadRGBList()
+            hasTexturedGLB = FileManager.default.fileExists(atPath: texturedGLBURL.path)
+        }
         .fullScreenCover(isPresented: $isShowingMeshViewer) {
             NavigationStack {
                 USDZSceneView(url: project.url.appendingPathComponent("scan.usdz"))
@@ -62,6 +73,95 @@ struct ProjectDetailView: View {
                     }
                     .toolbarBackground(.black.opacity(0.4), for: .navigationBar)
                     .toolbarBackground(.visible, for: .navigationBar)
+            }
+        }
+        .fullScreenCover(isPresented: $isShowingTexturedViewer) {
+            NavigationStack {
+                GLBSceneView(url: texturedGLBURL)
+                    .ignoresSafeArea()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("닫기") { isShowingTexturedViewer = false }
+                                .tint(.white)
+                        }
+                    }
+                    .toolbarBackground(.black.opacity(0.4), for: .navigationBar)
+                    .toolbarBackground(.visible, for: .navigationBar)
+            }
+        }
+    }
+
+    private var texturedGLBURL: URL {
+        project.url.appendingPathComponent("textured.glb")
+    }
+
+    /// 사진을 mesh에 직접 프로젝션해서 텍스처를 굽는다(`TextureBaker`, Metal 기반,
+    /// SuGaR/GPU-서버 없이 온디바이스에서 끝남) — `scan.usdz` + `rgb/` + `poses.jsonl`만
+    /// 있으면 되므로 mesh 보기와 같은 조건(`project.hasUSDZ`)으로 노출한다.
+    private var textureBakeSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if isBaking {
+                VStack(alignment: .leading, spacing: 4) {
+                    if let bakeProgress {
+                        ProgressView(value: Double(bakeProgress.framesProcessed), total: Double(max(bakeProgress.totalFrames, 1)))
+                        Text("\(bakeProgress.framesProcessed) / \(bakeProgress.totalFrames) 프레임")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ProgressView()
+                    }
+                }
+            } else {
+                Button {
+                    startBaking()
+                } label: {
+                    Label(hasTexturedGLB ? "텍스처 다시 생성" : "텍스처 생성", systemImage: "photo.on.rectangle.angled")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+
+                if hasTexturedGLB {
+                    Button {
+                        isShowingTexturedViewer = true
+                    } label: {
+                        Label("텍스처 결과 보기", systemImage: "cube.transparent.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+
+            if let bakeErrorMessage {
+                Text(bakeErrorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        }
+    }
+
+    /// 실기기 발열/시간이 꽤 걸릴 수 있는 작업이라 명시적 버튼으로만 트리거한다
+    /// (스캔 종료 직후 자동 실행 안 함). `ProjectStore.exportZip`과 같은 패턴 —
+    /// 백그라운드 큐에서 돌리고 완료 콜백만 메인 스레드로 되돌린다.
+    private func startBaking() {
+        isBaking = true
+        bakeProgress = nil
+        bakeErrorMessage = nil
+        let projectURL = project.url
+        let outputURL = texturedGLBURL
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try TextureBaker.bake(projectURL: projectURL, outputURL: outputURL) { progress in
+                    DispatchQueue.main.async { bakeProgress = progress }
+                }
+                DispatchQueue.main.async {
+                    isBaking = false
+                    hasTexturedGLB = true
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    isBaking = false
+                    bakeErrorMessage = "텍스처 생성 실패: \(error)"
+                }
             }
         }
     }
@@ -138,6 +238,31 @@ private struct USDZSceneView: UIViewRepresentable {
             geometry.materials = [material]
         }
     }
+}
+
+/// `TextureBaker`가 구운 `textured.glb`를 보여준다 — SceneKit이 glTF를 못 읽으므로
+/// `GLBLoader`로 직접 파싱한다(`USDZSceneView`와 같은 백그라운드 로드 패턴).
+private struct GLBSceneView: UIViewRepresentable {
+    let url: URL
+
+    func makeUIView(context: Context) -> SCNView {
+        let view = SCNView()
+        view.allowsCameraControl = true
+        view.autoenablesDefaultLighting = true
+        view.backgroundColor = .black
+        view.rendersContinuously = false
+        view.preferredFramesPerSecond = 30
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let scene = try? GLBLoader.loadScene(at: url)
+            DispatchQueue.main.async {
+                view.scene = scene
+            }
+        }
+        return view
+    }
+
+    func updateUIView(_ uiView: SCNView, context: Context) {}
 }
 
 /// ImageIO의 썸네일 생성(CGImageSourceCreateThumbnailAtIndex)으로 원본 JPEG를 전부
