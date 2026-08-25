@@ -166,6 +166,7 @@ enum TextureBaker {
         let faceCount = mesh.indices.count / 3
         var faceNormals = MeshUnifier.computeFaceNormals(positions: mesh.positions, indices: mesh.indices)
         let adjacency = MeshUnifier.buildFaceAdjacency(indices: mesh.indices)
+        print("[TextureBaker] mesh: \(mesh.positions.count) verts (raw \(rawMesh.positions.count)), \(faceCount) faces")
 
         // 2. UV 아틀라스 (UVAtlasBuilder.swift)
         let atlas = UVAtlasBuilder.build(faceCount: faceCount, maxTextureSize: options.maxTextureSize)
@@ -205,9 +206,11 @@ enum TextureBaker {
                     f += faceStride
                 }
             }
-            if negativeVotes > positiveVotes * 2, negativeVotes > 20 {
+            let flipped = negativeVotes > positiveVotes * 2 && negativeVotes > 20
+            if flipped {
                 for i in 0..<faceNormals.count { faceNormals[i] = -faceNormals[i] }
             }
+            print("[TextureBaker] normal orientation vote: positive=\(positiveVotes) negative=\(negativeVotes) flipped=\(flipped)")
         }
 
         // 4. 버퍼 준비 — packed_floatN과 바이트 단위로 맞춰야 하므로 SIMD3<Float>(Swift에서
@@ -325,17 +328,26 @@ enum TextureBaker {
         // 7. 카메라별 2-패스 베이킹
         let textureLoader = MTKTextureLoader(device: device)
         let totalFrames = poses.count
+        var textureLoadFailures = 0
+        var bufferSetupFailures = 0
         for (i, pose) in poses.enumerated() {
             autoreleasepool {
                 let photoURL = projectURL.appendingPathComponent(pose.rgb_path)
                 guard let photoTexture = try? textureLoader.newTexture(URL: photoURL, options: [.SRGB: false]) else {
+                    textureLoadFailures += 1
+                    if textureLoadFailures <= 3 {
+                        print("[TextureBaker] failed to load texture for frame \(i): \(photoURL.path)")
+                    }
                     onProgress?(Progress(framesProcessed: i + 1, totalFrames: totalFrames))
                     return
                 }
                 let uniformsFlat = buildCameraUniforms(pose: pose, depthWidth: depthWidth, depthHeight: depthHeight, options: options)
                 guard let uniformsBuffer = device.makeBuffer(bytes: uniformsFlat, length: uniformsFlat.count * 4),
                       let commandBuffer = commandQueue.makeCommandBuffer()
-                else { return }
+                else {
+                    bufferSetupFailures += 1
+                    return
+                }
 
                 // Pass A: 이 카메라 실시점에서 depth-only 렌더 (occlusion 판정용)
                 let depthPassDesc = MTLRenderPassDescriptor()
@@ -384,6 +396,7 @@ enum TextureBaker {
                 onProgress?(Progress(framesProcessed: i + 1, totalFrames: totalFrames))
             }
         }
+        print("[TextureBaker] frames: \(totalFrames) total, \(textureLoadFailures) texture-load failures, \(bufferSetupFailures) buffer/command-buffer setup failures")
 
         // 8. 정규화(accumColor/accumWeight -> 최종 텍스처)
         let finalTexDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: textureSize, height: textureSize, mipmapped: false)
@@ -411,6 +424,8 @@ enum TextureBaker {
         pixelBuffer.withUnsafeMutableBytes { ptr in
             finalTexture.getBytes(ptr.baseAddress!, bytesPerRow: textureSize * 4, from: region, mipmapLevel: 0)
         }
+        let writtenTexelCount = stride(from: 3, to: pixelBuffer.count, by: 4).reduce(0) { $0 + (pixelBuffer[$1] > 0 ? 1 : 0) }
+        print("[TextureBaker] atlas: \(writtenTexelCount)/\(textureSize * textureSize) texels directly written by GPU bake (before hole-fill)")
 
         // 9. 홀 채우기: face의 UV 중심 텍셀을 그 face의 대표색으로 보고(alpha>0이면
         // "보임"), face adjacency로 BFS 전파. 고립된 섬(용접 후에도 위상적으로 안 이어진
@@ -443,6 +458,9 @@ enum TextureBaker {
         for f in 0..<faceCount where !visited[f] {
             faceColors[f] = SIMD3(0.65, 0.65, 0.65)
         }
+        let seenCount = seen.filter { $0 }.count
+        let visitedCount = visited.filter { $0 }.count
+        print("[TextureBaker] faces: \(seenCount)/\(faceCount) directly seen, \(visitedCount)/\(faceCount) covered after BFS propagation, \(faceCount - visitedCount) fell back to flat gray")
 
         for py in 0..<textureSize {
             for px in 0..<textureSize {
