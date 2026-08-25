@@ -125,8 +125,14 @@ enum TextureBaker {
 
         let near = options.nearMeters
         let far = options.farMeters
-        let a = -far / (far - near)
-        let b = -far * near / (far - near)
+        // ndc = A + B/z, clipW = z (camera-space z는 이 코드베이스 전체에서 CV 컨벤션대로
+        // 양수가 전방) 조건으로 ndc(z=near)=0, ndc(z=far)=1을 풀면 A는 양수다:
+        // A + B/near = 0, A + B/far = 1 => A = far/(far-near), B = -A*near.
+        // (한때 w=-z인 다른 컨벤션으로 유도했던 A=-far/(far-near) 공식을 그대로 옮겨써서
+        // 부호가 반대였다 — 그 결과 room-scale 거리에서도 NDC depth가 항상 [0,1] 밖으로
+        // 나가 Metal의 near/far 클리핑에 걸려 depth pre-pass가 아무것도 못 그렸다.)
+        let a = far / (far - near)
+        let b = -a * near
 
         // Metal 클립 좌표(z: 0..1, y-flip 포함) 유도는 TextureBakingShaders.metal 상단
         // 주석 참고. column-major 평탄 배열: index = col*4+row.
