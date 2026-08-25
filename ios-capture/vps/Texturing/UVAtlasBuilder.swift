@@ -31,12 +31,21 @@ enum UVAtlasBuilder {
 
     /// `maxTextureSize`(폰 메모리/발열 예산 — 기본 2048)를 넘지 않도록 square 크기를 먼저
     /// 정하고 거기서 실제 텍스처 크기를 역산한다(데스크톱은 1814카메라 기준 10128였음).
-    static func build(faceCount: Int, maxTextureSize: Int = 2048) -> Atlas {
+    ///
+    /// 다만 square 크기엔 `minSquareSize`라는 바닥이 있다 — 코너마다 넣는 seam 방지용
+    /// pixel inset이 최대 ±3(아래 `insets` 참고)인데, face가 많아서 square가 그보다
+    /// 훨씬 작아지면(예: face 43만개짜리 mesh는 maxTextureSize=2048 기준 square=4까지
+    /// 줄어듦) inset이 정사각형 크기의 대부분/전부를 차지해버려서 UV가 깨진다 —
+    /// 코너들이 서로 겹치거나 옆 square로 밀려나면서 face 전체가 사실상 그려지지 않는
+    /// 정도까지 갈 수 있다(실기기에서 큰 스캔만 텍스처가 전혀 안 써지는 문제로 재현됨).
+    /// 그래서 face가 아주 많으면 `maxTextureSize`보다 실제 텍스처가 커질 수 있다 —
+    /// 용량/발열보다 정확성이 우선.
+    static func build(faceCount: Int, maxTextureSize: Int = 2048, minSquareSize: Int = 8) -> Atlas {
         guard faceCount > 0 else { return Atlas(textureSize: 1, cornerUVs: [], tileToFace: [0]) }
 
         let nSquares = faceCount / 2 + 1
         let nSquarePerAxis = Int(sqrt(Double(nSquares)) + 1.0)
-        let squareSize = max(1, maxTextureSize / nSquarePerAxis)
+        let squareSize = max(minSquareSize, maxTextureSize / nSquarePerAxis)
         let textureSize = squareSize * nSquarePerAxis
 
         var cornerUVs = [SIMD2<Float>](repeating: .zero, count: faceCount * 3)

@@ -170,6 +170,7 @@ enum TextureBaker {
 
         // 2. UV 아틀라스 (UVAtlasBuilder.swift)
         let atlas = UVAtlasBuilder.build(faceCount: faceCount, maxTextureSize: options.maxTextureSize)
+        print("[TextureBaker] atlas texture size: \(atlas.textureSize) (cap was \(options.maxTextureSize))")
 
         // 3. poses.jsonl
         let poses = try loadPoses(projectURL.appendingPathComponent("poses/poses.jsonl"))
