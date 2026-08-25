@@ -23,6 +23,11 @@ struct ProjectDetailView: View {
     @State private var bakeErrorMessage: String?
     @State private var isShowingTexturedViewer = false
 
+    @State private var isUploading = false
+    @State private var uploadStatusText: String?
+    @State private var uploadSuccessRoomID: String?
+    @State private var uploadErrorMessage: String?
+
     private let columns = [GridItem(.adaptive(minimum: 90), spacing: 4)]
 
     var body: some View {
@@ -41,6 +46,8 @@ struct ProjectDetailView: View {
 
                     textureBakeSection
                 }
+
+                vpsUploadSection
 
                 if !rgbURLs.isEmpty {
                     Text("캡처된 사진 (\(rgbURLs.count)장)")
@@ -163,6 +170,144 @@ struct ProjectDetailView: View {
                     bakeErrorMessage = "텍스처 생성 실패: \(error)"
                 }
             }
+        }
+    }
+
+    /// scan.usdz 없이 rgb/depth/poses.jsonl만으로 되는 작업이라(VPS DB 빌드는 usdz를
+    /// 안 씀 — pipeline/dc_vps_pipeline/db_build.py 참고) mesh 보기/텍스처 생성과
+    /// 달리 `project.hasUSDZ` 조건 없이 항상 노출한다.
+    private var vpsUploadSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if isUploading {
+                VStack(alignment: .leading, spacing: 4) {
+                    ProgressView()
+                    if let uploadStatusText {
+                        Text(uploadStatusText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } else {
+                Button {
+                    startUpload()
+                } label: {
+                    Label("VPS 서버에 업로드", systemImage: "arrow.up.to.line.circle")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
+
+            if let uploadSuccessRoomID {
+                Text("등록 완료 (room: \(uploadSuccessRoomID))")
+                    .font(.caption)
+                    .foregroundStyle(.green)
+            }
+            if let uploadErrorMessage {
+                Text(uploadErrorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        }
+    }
+
+    /// scan_<name>/를 zip으로 압축(ZipArchiver, ProjectStore.exportZip과 같은 함수
+    /// 재사용) -> VPSUploadClient로 업로드 -> 서버 job이 끝날 때까지 폴링. 업로드
+    /// 중에는 앱을 켜둔 상태로 유지해야 한다(백그라운드 세션이 아니라 foreground
+    /// URLSession이라 — 이 단계에서는 진짜 백그라운드 전송까지는 범위 밖으로 뒀다).
+    private func startUpload() {
+        let settingsStore = ServerSettingsStore()
+        guard let serverURL = settingsStore.serverURL else {
+            uploadErrorMessage = "설정(⚙️)에서 서버 주소를 먼저 입력하세요"
+            return
+        }
+        isUploading = true
+        uploadErrorMessage = nil
+        uploadSuccessRoomID = nil
+        uploadStatusText = "압축 중…"
+
+        let projectURL = project.url
+        let scanName = project.id
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let zipURL = FileManager.default.temporaryDirectory.appendingPathComponent("\(scanName)-upload.zip")
+            try? FileManager.default.removeItem(at: zipURL)
+            do {
+                try ZipArchiver.zip(directory: projectURL, to: zipURL)
+            } catch {
+                DispatchQueue.main.async {
+                    isUploading = false
+                    uploadErrorMessage = "압축 실패: \(error.localizedDescription)"
+                }
+                return
+            }
+
+            DispatchQueue.main.async {
+                uploadStatusText = "업로드 중… 0%"
+                VPSUploadClient.upload(
+                    zipFileURL: zipURL, scanName: scanName, serverURL: serverURL, replace: true,
+                    onProgress: { progress in
+                        uploadStatusText = "업로드 중… \(Int(progress * 100))%"
+                    },
+                    completion: { result in
+                        try? FileManager.default.removeItem(at: zipURL)
+                        switch result {
+                        case .success:
+                            uploadStatusText = "서버에서 처리 중…"
+                            pollScanStatus(
+                                scanName: scanName, serverURL: serverURL,
+                                deadline: Date().addingTimeInterval(10 * 60)
+                            )
+                        case .failure(let error):
+                            isUploading = false
+                            uploadErrorMessage = "업로드 실패: \(error.localizedDescription)"
+                        }
+                    }
+                )
+            }
+        }
+    }
+
+    /// 3초 간격으로 GET /scans/{scanName}을 재귀 폴링한다. 10분 넘게 안 끝나면
+    /// 클라이언트 쪽에서 포기하지만(서버 job 자체는 계속 돎), 네트워크 일시
+    /// 오류만으로는 포기하지 않고 다음 폴링에 다시 시도한다 — 업로드는 이미
+    /// 서버가 접수했으므로 여기서 성급하게 실패 처리하면 오히려 오해를 준다.
+    private func pollScanStatus(scanName: String, serverURL: URL, deadline: Date) {
+        guard Date() < deadline else {
+            isUploading = false
+            uploadErrorMessage = "빌드 상태 확인 시간 초과 — 서버에서는 계속 진행 중일 수 있습니다"
+            return
+        }
+        VPSUploadClient.fetchStatus(scanName: scanName, serverURL: serverURL) { result in
+            switch result {
+            case .success(let status):
+                switch status.status {
+                case "done":
+                    isUploading = false
+                    uploadStatusText = nil
+                    uploadSuccessRoomID = status.room_id
+                case "failed":
+                    isUploading = false
+                    uploadErrorMessage = "빌드 실패: \(status.error ?? "알 수 없는 오류")"
+                default:
+                    uploadStatusText = Self.statusLabel(for: status.status)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        pollScanStatus(scanName: scanName, serverURL: serverURL, deadline: deadline)
+                    }
+                }
+            case .failure:
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    pollScanStatus(scanName: scanName, serverURL: serverURL, deadline: deadline)
+                }
+            }
+        }
+    }
+
+    private static func statusLabel(for status: String) -> String {
+        switch status {
+        case "unzipping": return "압축 해제 중…"
+        case "building": return "VPS DB 빌드 중…"
+        case "registering": return "등록 중…"
+        default: return status
         }
     }
 

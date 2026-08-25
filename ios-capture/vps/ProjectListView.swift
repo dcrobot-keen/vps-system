@@ -10,6 +10,7 @@ struct ProjectListView: View {
     @State private var activeProjectName = ""
     @State private var shareItem: ShareItem?
     @State private var exportingProjectID: String?
+    @State private var isShowingServerSettings = false
 
     var body: some View {
         NavigationStack {
@@ -34,6 +35,13 @@ struct ProjectListView: View {
                         Image(systemName: "plus")
                     }
                 }
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        isShowingServerSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                }
             }
             .navigationDestination(isPresented: $isNavigatingToScan) {
                 ScanView(projectName: activeProjectName) {
@@ -49,6 +57,9 @@ struct ProjectListView: View {
             }
             .sheet(item: $shareItem) { item in
                 ShareSheet(activityItems: [item.url])
+            }
+            .sheet(isPresented: $isShowingServerSettings) {
+                ServerSettingsView()
             }
             .onAppear { store.refresh() }
         }
