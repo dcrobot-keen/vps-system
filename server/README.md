@@ -103,12 +103,43 @@ room을 새로 스캔했거나 다시 빌드했을 때, 예전에는 `DC_VPS_DB_
 `remove_room()`은 h5/pickle을 읽고 NetVLAD retrieval용 배열을 다시 쌓는 것뿐이라
 GPU를 쓰지 않고 수십 ms 안에 끝난다.
 
-- **원본 스캔에서 DB를 새로 빌드하는 것 자체는 이 API의 책임이 아니다** — 여전히
-  `pipeline/dc_vps_pipeline/db_build.py`(또는 `orchestrate.py`)를 따로 돌려서 DB
-  디렉터리를 만든 다음, 그 경로를 `POST /rooms`로 등록하는 2단계 흐름이다. "스캔
-  업로드 → 자동 빌드 → 등록"까지 한 번에 하려면 별도로 job queue/백그라운드 워커가
-  필요하다(빌드는 GPU로 수십 초 걸려서 요청 안에서 동기로 하면 그동안 다른 쿼리가
-  막힌다) — 아직 없음.
+- **원본 스캔에서 DB를 새로 빌드하는 것도 이제 이 서버가 한 번에 처리한다** —
+  `POST /scans`로 스캔 zip을 올리면 서버가 풀어서 `db_build.build_db()`를 돌리고
+  결과를 자동으로 `add_room()`으로 등록한다(아래 "스캔 업로드(자동 빌드+등록)"
+  참고). `pipeline/dc_vps_pipeline/db_build.py`/`orchestrate.py`를 손으로 돌려서
+  `POST /rooms`로 등록하는 예전 2단계 수동 흐름도 여전히 그대로 동작한다(이미
+  빌드된 DB가 있을 때, 또는 scan-to-map-studio 연동까지 하고 싶을 때).
+
+## 스캔 업로드(자동 빌드+등록)
+
+`POST /scans`에 스캔 폴더를 그대로 zip으로 올리면(raw body,
+`Content-Type: application/zip`, `scan_name`/`replace`는 쿼리 파라미터) 서버가
+`scan_<name>/`로 풀고 → DB 빌드 → room 등록까지 한 번에 끝낸다. multipart가
+아니라 raw body인 이유는 클라이언트(ios-capture)에 네트워킹 코드가 전혀 없어서
+멀티파트 손구현 위험을 피하기 위함. 스캔이 1~2GB일 수 있어서 메모리에 안 올리고
+스트리밍으로 디스크에 바로 쓴다.
+
+```bash
+curl -X POST "http://<server>:8000/scans?scan_name=scan_20260825_bedroom&replace=true" \
+  -H "Content-Type: application/zip" --data-binary @scan_20260825_bedroom.zip
+# -> {"scan_name": "scan_20260825_bedroom", "status": "queued"}
+
+curl http://<server>:8000/scans/scan_20260825_bedroom
+# -> {"scan_name": ..., "status": "building"|"registering"|"done"|"failed", "room_id": ..., "error": ...}
+```
+
+- **한 번에 하나만.** GPU가 하나뿐이라 빌드 중에 다른 업로드가 오면 큐에 쌓지
+  않고 바로 `409`로 거절한다(`server/app/scan_jobs.py`) — 현장에서 운영자가
+  가끔 의도적으로 올리는 작업이라 큐가 필요할 만큼 빈번하지 않다.
+- **GPU 경합.** 빌드(`db_build.build_db`)와 실시간 쿼리(`localize()`의 SuperPoint/
+  NetVLAD/LightGlue forward pass)가 같은 GPU를 동시에 쓰지 않게
+  `server/app/gpu_lock.py`의 `GPU_LOCK`으로 직렬화한다. `localize()`는 메서드
+  전체가 아니라 실제 GPU 구간(`_extract_superpoint`/`_extract_netvlad`/
+  `_match_candidate`)만 잠그므로, 빌드가 도는 동안에도 진행 중인 쿼리의
+  PnP+RANSAC(CPU, 실제 병목의 대부분) 단계는 계속 돈다 — 빌드가 GPU 구간을 쥐고
+  있는 잠깐 동안만 다른 쿼리가 대기한다.
+- job 상태는 인메모리라 서버 재시작하면 사라진다(등록된 room 자체는
+  `rooms_manifest.json`으로 유지되니 문제없음).
 - **등록 상태는 재시작해도 유지된다.** 현재 로드된 room들의 DB 디렉터리 목록을
   `rooms_manifest.json`에 저장해두고, 다음 기동 때 `DC_VPS_DB_DIR(S)` 대신 이
   manifest를 읽는다 — 그래서 env var는 **최초 1회 시딩**에만 쓰이고, 이후로는

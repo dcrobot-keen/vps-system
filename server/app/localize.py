@@ -44,6 +44,8 @@ from hloc import extract_features, extractors, match_features, matchers
 from hloc.extract_features import resize_image
 from hloc.utils.base_model import dynamic_load
 
+from . import gpu_lock
+
 # DB가 pipeline/dc_vps_pipeline/config.py의 설정으로 빌드되기 때문에, 쿼리 쪽도 같은
 # 설정으로 추출해야 keypoint 좌표계/디스크립터가 호환된다. server venv에
 # `pip install -e ../pipeline`로 설치해서(server/README.md 참고) 값을 직접 import한다 —
@@ -355,7 +357,7 @@ class Localizer:
 
     def _extract_superpoint(self, image_bytes: bytes) -> dict:
         tensor, original_size = self._preprocess(image_bytes, SUPERPOINT_CONF["preprocessing"])
-        with torch.no_grad():
+        with gpu_lock.GPU_LOCK, torch.no_grad():
             pred = self.superpoint_model({"image": tensor.to(self.device)})
         pred = {k: v[0].cpu().numpy() for k, v in pred.items()}
 
@@ -367,7 +369,7 @@ class Localizer:
 
     def _extract_netvlad(self, image_bytes: bytes) -> np.ndarray:
         tensor, _ = self._preprocess(image_bytes, RETRIEVAL_CONF["preprocessing"])
-        with torch.no_grad():
+        with gpu_lock.GPU_LOCK, torch.no_grad():
             pred = self.netvlad_model({"image": tensor.to(self.device)})
         return pred["global_descriptor"][0].cpu().numpy()
 
@@ -409,7 +411,7 @@ class Localizer:
         }
         data = {k: v.to(self.device) for k, v in data.items()}
 
-        with torch.no_grad():
+        with gpu_lock.GPU_LOCK, torch.no_grad():
             pred = self.lightglue_model(data)
         return pred["matches0"][0].cpu().numpy()
 

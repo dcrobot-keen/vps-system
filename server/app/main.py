@@ -26,14 +26,18 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
+from . import scan_jobs
 from .localize import Localizer
 
 app = FastAPI(title="dc-vps localization server")
+
+_SCAN_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def _env_db_dirs() -> list[Path]:
@@ -46,6 +50,17 @@ def _env_db_dirs() -> list[Path]:
 
 def _manifest_path() -> Path:
     return Path(os.environ.get("DC_VPS_ROOMS_MANIFEST", "rooms_manifest.json"))
+
+
+def _uploads_dir() -> Path:
+    # 업로드된 zip을 풀어놓는 곳. pipeline/outputs와 같은 상위(../pipeline/)에 둔다 --
+    # 기존 DB 디렉터리들이 이미 그렇게 상대경로로(../pipeline/outputs/<scan_name>)
+    # manifest에 저장돼 있어서(add_room 결과), 같은 컨벤션을 따른다.
+    return Path(os.environ.get("DC_VPS_UPLOADS_DIR", "../pipeline/uploads"))
+
+
+def _pipeline_outputs_dir() -> Path:
+    return Path(os.environ.get("DC_VPS_PIPELINE_OUTPUTS_DIR", "../pipeline/outputs"))
 
 
 def _load_manifest(path: Path) -> list[Path] | None:
@@ -125,6 +140,65 @@ def remove_room(room_id: str) -> dict:
 
     _save_manifest(_manifest_path(), _current_db_dirs(localizer))
     return {"rooms": localizer.list_rooms()}
+
+
+@app.post("/scans", status_code=202)
+async def upload_scan(request: Request, scan_name: str, replace: bool = False) -> dict:
+    """폰이 스캔 폴더를 zip으로 그대로 올리면(raw body, Content-Type: application/zip)
+    서버가 풀어서 DB를 빌드하고 room으로 등록까지 한 번에 끝낸다 -- 지금까지는
+    db_build.py를 손으로 돌리고 그 결과를 /rooms로 등록하는 2단계 수동 흐름이었다.
+
+    multipart가 아니라 raw body인 이유: 폰 앱에 네트워킹 코드가 아직 하나도 없어서
+    (이게 첫 HTTP 호출) multipart를 손으로 구현하는 위험을 피했다. 스캔은 1~2GB일
+    수 있어서 request.body()로 메모리에 통째로 올리지 않고 스트리밍으로 디스크에
+    바로 쓴다(/localize의 UploadFile.read()는 사진 한 장짜리라 문제없지만 이 크기엔
+    안 맞는 패턴).
+
+    job 상태는 GET /scans/{scan_name}으로 폴링한다. job 식별자는 별도 UUID가 아니라
+    scan_name 자체 -- 클라이언트가 업로드 전부터 이미 아는 값이라 응답을 파싱해서
+    id를 얻을 필요가 없다."""
+    if not _SCAN_NAME_RE.match(scan_name):
+        raise HTTPException(status_code=400, detail="scan_name은 영숫자/_/- 만 허용됩니다")
+    if not replace and scan_name in {r["room_id"] for r in localizer.list_rooms()}:
+        raise HTTPException(
+            status_code=409,
+            detail=f"room_id '{scan_name}'가 이미 등록돼 있습니다 (재업로드하려면 replace=true)",
+        )
+    # 바디(최대 1~2GB)를 다 받기 전에 빨리 거절한다. start_build_job()이 시작 시점에
+    # 한 번 더(락으로 원자적으로) 검사하므로 이 사이의 경쟁 상태는 안전하다.
+    if scan_jobs.is_busy():
+        raise HTTPException(status_code=409, detail="다른 스캔 빌드가 진행 중입니다. 잠시 후 다시 시도하세요")
+
+    uploads_dir = _uploads_dir()
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    zip_path = uploads_dir / f"{scan_name}.zip"
+    with zip_path.open("wb") as f:
+        async for chunk in request.stream():
+            f.write(chunk)
+
+    try:
+        scan_jobs.start_build_job(
+            scan_name,
+            zip_path,
+            replace=replace,
+            localizer=localizer,
+            uploads_dir=uploads_dir,
+            output_dir=_pipeline_outputs_dir() / scan_name,
+            on_registered=lambda: _save_manifest(_manifest_path(), _current_db_dirs(localizer)),
+        )
+    except scan_jobs.BusyError as error:
+        zip_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+    return {"scan_name": scan_name, "status": "queued"}
+
+
+@app.get("/scans/{scan_name}")
+def get_scan_status(scan_name: str) -> dict:
+    job = scan_jobs.get_job(scan_name)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"scan '{scan_name}'에 대한 job이 없습니다")
+    return job
 
 
 @app.post("/localize")

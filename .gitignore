@@ -11,6 +11,7 @@ __pycache__/
 venv/
 *.egg-info/
 outputs/
+uploads/
 third_party/
 rooms_manifest.json
 _e2e_scan/
