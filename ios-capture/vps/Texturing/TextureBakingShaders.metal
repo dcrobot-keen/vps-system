@@ -92,9 +92,15 @@ struct AtlasBakeFragmentOut {
     float accumWeight [[color(1)]];
 };
 
+// 디버그 카운터: [0]=카메라 뒤, [1]=이미지 범위 밖, [2]=occlusion 거부, [3]=통과(기록됨).
+// 흑백(=전부 홀 채우기 gray)만 나오는 문제가 정확히 어느 체크에서 100% 걸리는지
+// 실기기에서 알 방법이 없어서(Xcode 콘솔에 프래그먼트 셰이더가 직접 print를 못
+// 함) 넣는다 — 전체 베이킹 동안 프레임을 걸쳐 누적, 끝나고 TextureBaker.swift가
+// 읽어서 로그로 찍는다.
 fragment AtlasBakeFragmentOut atlasBakeFragment(
     AtlasBakeVertexOut in [[stage_in]],
     constant CameraUniforms &camera [[buffer(0)]],
+    device atomic_uint *debugCounters [[buffer(1)]],
     texture2d<float> photo [[texture(0)]],
     depth2d<float> occlusionDepth [[texture(1)]]
 ) {
@@ -105,12 +111,14 @@ fragment AtlasBakeFragmentOut atlasBakeFragment(
     float4x4 view = loadMatrix(camera.viewMatrix);
     float3 camPos = (view * float4(in.worldPos, 1.0)).xyz;
     if (camPos.z <= 0.001) {
+        atomic_fetch_add_explicit(&debugCounters[0], 1, memory_order_relaxed);
         return out; // 카메라 뒤
     }
 
     float pixelX = camera.fx * camPos.x / camPos.z + camera.cx;
     float pixelY = camera.fy * camPos.y / camPos.z + camera.cy;
     if (pixelX < 0.0 || pixelX >= camera.imageWidth || pixelY < 0.0 || pixelY >= camera.imageHeight) {
+        atomic_fetch_add_explicit(&debugCounters[1], 1, memory_order_relaxed);
         return out; // 이미지 범위 밖
     }
 
@@ -133,6 +141,7 @@ fragment AtlasBakeFragmentOut atlasBakeFragment(
         float B = camera.depthProjection[14];
         float storedZ = B / (storedDepthNDC - A);
         if (camPos.z > storedZ + camera.occlusionBias) {
+            atomic_fetch_add_explicit(&debugCounters[2], 1, memory_order_relaxed);
             return out; // 다른 표면에 가려짐
         }
     }
@@ -153,6 +162,7 @@ fragment AtlasBakeFragmentOut atlasBakeFragment(
     float2 photoUV = float2(pixelX / camera.imageWidth, pixelY / camera.imageHeight);
     float3 color = photo.sample(photoSampler, photoUV).rgb;
 
+    atomic_fetch_add_explicit(&debugCounters[3], 1, memory_order_relaxed);
     out.accumColor = float4(color * weight, weight);
     out.accumWeight = weight;
     return out;

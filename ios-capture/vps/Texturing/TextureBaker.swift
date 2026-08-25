@@ -305,6 +305,15 @@ enum TextureBaker {
         depthTexDesc.storageMode = .private
         guard let depthTexture = device.makeTexture(descriptor: depthTexDesc) else { throw BakeError.deviceUnavailable }
 
+        // 디버그 카운터(TextureBakingShaders.metal의 atlasBakeFragment 참고):
+        // [0]=카메라 뒤, [1]=이미지 범위 밖, [2]=occlusion 거부, [3]=통과. 전체 베이킹
+        // 동안 누적해서 마지막에 읽어 로그로 찍는다 — 흑백(전부 gray)만 나오는 문제가
+        // 정확히 어느 체크에서 100% 걸리는지 실기기 로그로만 알아낼 수 있어서 넣는다.
+        guard let debugCountersBuffer = device.makeBuffer(length: 4 * MemoryLayout<UInt32>.stride, options: .storageModeShared) else {
+            throw BakeError.deviceUnavailable
+        }
+        memset(debugCountersBuffer.contents(), 0, debugCountersBuffer.length)
+
         // accumColor/accumWeight를 한 번 명시적으로 0으로 초기화 — 매 프레임 loadAction을
         // .load로 고정할 수 있게(첫 프레임 로드 실패 등으로 클리어를 못 하는 경우를 방지).
         do {
@@ -381,6 +390,7 @@ enum TextureBaker {
                     atlasEncoder.setVertexBuffer(atlasNormalsBuffer, offset: 0, index: 1)
                     atlasEncoder.setVertexBuffer(atlasUVsBuffer, offset: 0, index: 2)
                     atlasEncoder.setFragmentBuffer(uniformsBuffer, offset: 0, index: 0)
+                    atlasEncoder.setFragmentBuffer(debugCountersBuffer, offset: 0, index: 1)
                     atlasEncoder.setFragmentTexture(photoTexture, index: 0)
                     atlasEncoder.setFragmentTexture(depthTexture, index: 1)
                     atlasEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: faceCount * 3)
@@ -397,6 +407,10 @@ enum TextureBaker {
             }
         }
         print("[TextureBaker] frames: \(totalFrames) total, \(textureLoadFailures) texture-load failures, \(bufferSetupFailures) buffer/command-buffer setup failures")
+        do {
+            let counters = debugCountersBuffer.contents().bindMemory(to: UInt32.self, capacity: 4)
+            print("[TextureBaker] fragment outcomes (summed over all frames): behindCamera=\(counters[0]) outOfBounds=\(counters[1]) occluded=\(counters[2]) written=\(counters[3])")
+        }
 
         // 8. 정규화(accumColor/accumWeight -> 최종 텍스처)
         let finalTexDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: textureSize, height: textureSize, mipmapped: false)
