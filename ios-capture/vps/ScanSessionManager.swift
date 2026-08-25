@@ -16,9 +16,10 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
     @Published private(set) var frameCount = 0
     @Published private(set) var statusMessage = "대기 중"
     @Published private(set) var lastOutputDir: URL?
-    /// 스캔 중 실시간으로 보여줄 짧은 안내 문구(트래킹 불안정, 거리, 구역 분할
-    /// 제안 등). nil이면 특별히 알릴 게 없는 정상 상태. VPS DB 품질에 실제로
-    /// 영향을 준다고 실측/조사로 확인된 것들만 넣는다(아래 updateGuidance 참고).
+    /// 스캔 중 실시간으로 보여줄 짧은 안내 문구(트래킹 불안정, 거리, 텍스처 커버리지,
+    /// 구역 분할 제안 등). nil이면 특별히 알릴 게 없는 정상 상태. VPS DB 품질/텍스처
+    /// 품질에 실제로 영향을 준다고 실측/조사로 확인된 것들만 넣는다(아래
+    /// updateGuidance 참고).
     @Published private(set) var guidanceMessage: String?
 
     private var frameIndex = 0
@@ -34,19 +35,33 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
     private let captureIntervalSeconds: TimeInterval = 0.1
     private let captureMinDistanceMeters: Float = 0.2
 
+    /// 최근 저장된 프레임들의 카메라 위치(월드 좌표). 텍스처 커버리지 안내용 —
+    /// isCameraStationary 참고. 저장되는 프레임에서만 채우므로(모든 ARFrame이
+    /// 아니라) TextureBaker가 실제로 쓰는 카메라 집합과 일치한다.
+    private var recentCameraPositions: [simd_float3] = []
+
     // MARK: - 스캔 가이드 임계값
     //
-    // VPS DB 품질에 실제로 영향을 준다고 확인된 것들만 넣었다:
+    // VPS DB 품질/텍스처 품질에 실제로 영향을 준다고 확인된 것들만 넣었다:
     // - 트래킹 상태: shouldCapture()가 이미 tracking != .normal인 프레임을 버리고
     //   있다 — 사용자가 "왜 프레임이 안 늘어나지"를 깨닫게 실시간으로 알려준다.
     // - 거리: pipeline/dc_vps_pipeline/config.py의 MAX_DEPTH_METERS(5.0)와 맞춰
     //   여유를 둔 값 — 너무 가깝거나 멀면 그 지점의 depth가 backproject 단계에서
     //   버려져 3D 포인트가 아예 안 생긴다.
+    // - 텍스처 커버리지: 온디바이스 텍스처 베이킹(TextureBaker)은 각 표면을 여러
+    //   각도에서 본 사진 중 제일 정면에 가까운 걸 골라 쓴다 — 카메라가 같은 자리에서
+    //   거의 안 움직이면 표면 대부분이 딱 한 각도(종종 사각/그레이징 각)로만 찍혀서
+    //   텍스처가 흐릿하거나 이음새가 남는다. 최근 windowFrameCount 프레임의 카메라
+    //   위치가 stationaryRadiusMeters 반경 안에 몰려 있으면 "움직이면서 찍으라"고
+    //   안내한다.
     // - 구역 분할 제안: 707프레임짜리 긴 스캔에서 ARKit 트래킹 드리프트가 누적돼
     //   앞/뒤 프레임 사이에 실제 기하 오차가 생기는 걸 실측으로 확인했다(2026-08-22).
     //   한 room(강체 공간) 단위로 짧게 끊는 게 길게 이어 찍는 것보다 일관적이다.
+    //   텍스처 커버리지와는 별개 문제라 메시지를 분리했다 — 이건 지오메트리 정확도.
     private static let minGuidanceDepthMeters: Float = 0.3
     private static let maxGuidanceDepthMeters: Float = 4.5
+    private static let textureCoverageWindowFrameCount = 60
+    private static let textureCoverageStationaryRadiusMeters: Float = 0.4
     private static let wrapUpSuggestionFrameCount = 300
 
     private let ciContext = CIContext()
@@ -75,6 +90,7 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         frameIndex = 0
         lastCaptureTimestamp = 0
         lastCameraPosition = nil
+        recentCameraPositions = []
         sessionStartTime = Date()
 
         let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -172,6 +188,15 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         saveDepth(depthData.depthMap, confidenceMap: depthData.confidenceMap, index: index)
         appendPose(frame: frame, index: index)
 
+        recentCameraPositions.append(simd_float3(
+            frame.camera.transform.columns.3.x,
+            frame.camera.transform.columns.3.y,
+            frame.camera.transform.columns.3.z
+        ))
+        if recentCameraPositions.count > Self.textureCoverageWindowFrameCount {
+            recentCameraPositions.removeFirst()
+        }
+
         DispatchQueue.main.async { [weak self] in
             self?.frameCount = index
         }
@@ -185,8 +210,11 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
 
     // MARK: - 스캔 가이드
 
-    /// 트래킹 상태 -> 거리 -> 구역 분할 제안 순으로 확인해서 지금 제일 급한 안내
-    /// 하나만 고른다(트래킹이 안 좋으면 프레임 자체가 안 찍히니 제일 급함).
+    /// 트래킹 상태 -> 거리 -> 텍스처 커버리지 -> 구역 분할 제안 순으로 확인해서
+    /// 지금 제일 급한 안내 하나만 고른다(트래킹이 안 좋으면 프레임 자체가 안 찍히니
+    /// 제일 급함). 텍스처 커버리지를 구역 분할 제안보다 먼저 보는 이유: 제자리에서만
+    /// 찍어서 프레임 수만 채운 상태로 "이제 충분해요"를 먼저 보여주면 텍스처 품질
+    /// 문제를 놓치고 그냥 저장하게 된다 — 움직이라는 안내가 더 급하다.
     private func updateGuidance(frame: ARFrame) {
         let message: String?
         switch frame.camera.trackingState {
@@ -209,8 +237,10 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
                     message = "너무 가까워요 — 조금 물러나주세요"
                 } else if depth > Self.maxGuidanceDepthMeters {
                     message = "너무 멀어요 — 조금 다가가주세요"
+                } else if isCameraStationary {
+                    message = "이 자리에서만 찍고 있어요 — 조금씩 움직이며 여러 각도로 봐야 텍스처가 선명해져요"
                 } else if frameCount >= Self.wrapUpSuggestionFrameCount {
-                    message = "이 구역은 충분해요 — 저장하고 새 구역으로 이어가면 더 정확해요"
+                    message = "이 구역은 트래킹 오차가 쌓이기 쉬워요 — 저장하고 새 구역으로 이어가면 더 정확해요"
                 } else {
                     message = nil
                 }
@@ -223,6 +253,18 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         DispatchQueue.main.async { [weak self] in
             self?.guidanceMessage = message
         }
+    }
+
+    /// 최근 window 프레임 동안 카메라가 한 자리(반경 stationaryRadiusMeters 안)에
+    /// 머물러 있었는지 — 텍스처 베이킹은 각 표면을 여러 각도에서 찍은 사진 중 제일
+    /// 정면에 가까운 걸 고르므로, 카메라가 안 움직이면 대부분의 표면이 한 각도로만
+    /// 찍혀 텍스처 품질이 떨어진다. window가 아직 안 찼으면(스캔 시작 직후) 판단을
+    /// 미룬다 — 초반부터 "움직이세요"를 띄우면 오히려 헷갈린다.
+    private var isCameraStationary: Bool {
+        guard recentCameraPositions.count >= Self.textureCoverageWindowFrameCount else { return false }
+        let centroid = recentCameraPositions.reduce(simd_float3.zero, +) / Float(recentCameraPositions.count)
+        let maxRadius = recentCameraPositions.reduce(Float(0)) { max($0, simd_distance($1, centroid)) }
+        return maxRadius < Self.textureCoverageStationaryRadiusMeters
     }
 
     /// depth map 중앙 픽셀의 거리(m)를 읽는다. LiDAR depth는 Float32 CVPixelBuffer.
