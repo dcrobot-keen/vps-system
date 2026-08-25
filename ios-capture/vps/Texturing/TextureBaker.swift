@@ -303,17 +303,12 @@ enum TextureBaker {
         let depthHeight = max(1, Int((Float(firstIntrinsics.height) * depthScale).rounded()))
         let depthTexDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .depth32Float, width: depthWidth, height: depthHeight, mipmapped: false)
         depthTexDesc.usage = [.renderTarget, .shaderRead]
-        depthTexDesc.storageMode = .private
+        // .private가 아니라 .shared: occlusion이 한 번도 안 걸리는 문제를 진단하려면
+        // depth pre-pass가 실제로 뭔가 그리는지 CPU에서 한 프레임 읽어봐야 하는데,
+        // .private 텍스처는 getBytes로 못 읽는다. 이 텍스처는 작아서(수백 KB) 이
+        // 앱의 unified-memory(iOS) 환경에서 .shared로 둬도 비용 차이가 무시할 만하다.
+        depthTexDesc.storageMode = .shared
         guard let depthTexture = device.makeTexture(descriptor: depthTexDesc) else { throw BakeError.deviceUnavailable }
-
-        // 디버그 카운터(TextureBakingShaders.metal의 atlasBakeFragment 참고):
-        // [0]=카메라 뒤, [1]=이미지 범위 밖, [2]=occlusion 거부, [3]=통과. 전체 베이킹
-        // 동안 누적해서 마지막에 읽어 로그로 찍는다 — 흑백(전부 gray)만 나오는 문제가
-        // 정확히 어느 체크에서 100% 걸리는지 실기기 로그로만 알아낼 수 있어서 넣는다.
-        guard let debugCountersBuffer = device.makeBuffer(length: 4 * MemoryLayout<UInt32>.stride, options: .storageModeShared) else {
-            throw BakeError.deviceUnavailable
-        }
-        memset(debugCountersBuffer.contents(), 0, debugCountersBuffer.length)
 
         // accumColor/accumWeight를 한 번 명시적으로 0으로 초기화 — 매 프레임 loadAction을
         // .load로 고정할 수 있게(첫 프레임 로드 실패 등으로 클리어를 못 하는 경우를 방지).
@@ -391,7 +386,6 @@ enum TextureBaker {
                     atlasEncoder.setVertexBuffer(atlasNormalsBuffer, offset: 0, index: 1)
                     atlasEncoder.setVertexBuffer(atlasUVsBuffer, offset: 0, index: 2)
                     atlasEncoder.setFragmentBuffer(uniformsBuffer, offset: 0, index: 0)
-                    atlasEncoder.setFragmentBuffer(debugCountersBuffer, offset: 0, index: 1)
                     atlasEncoder.setFragmentTexture(photoTexture, index: 0)
                     atlasEncoder.setFragmentTexture(depthTexture, index: 1)
                     atlasEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: faceCount * 3)
@@ -404,14 +398,29 @@ enum TextureBaker {
                 // 실기기에서 정확성부터 확인한 다음에 손볼 지점.
                 commandBuffer.commit()
                 commandBuffer.waitUntilCompleted()
+
+                // occlusion이 한 번도 안 걸리는 문제 진단용 — 프레임 0의 depth
+                // pre-pass가 실제로 뭔가 그렸는지 한 번만 확인한다(위에서 depthTexture를
+                // .shared로 바꿔둔 이유). far-clip(1.0)이 아닌 텍셀이 하나도 없으면
+                // depth pre-pass 자체가 아무것도 렌더링 못 하고 있다는 뜻이고, 상당수
+                // 있으면 pre-pass는 정상이고 occlusion 판정/bias 쪽 문제로 좁혀진다.
+                if i == 0 {
+                    var depthPixels = [Float](repeating: 1.0, count: depthWidth * depthHeight)
+                    depthPixels.withUnsafeMutableBytes { ptr in
+                        depthTexture.getBytes(
+                            ptr.baseAddress!, bytesPerRow: depthWidth * MemoryLayout<Float>.stride,
+                            from: MTLRegionMake2D(0, 0, depthWidth, depthHeight), mipmapLevel: 0
+                        )
+                    }
+                    let written = depthPixels.filter { $0 < 0.9999 }
+                    let minDepth = written.min() ?? 1.0
+                    print("[TextureBaker] depth pre-pass sanity (frame 0): \(written.count)/\(depthPixels.count) texels < far-clip, min NDC depth = \(minDepth)")
+                }
+
                 onProgress?(Progress(framesProcessed: i + 1, totalFrames: totalFrames))
             }
         }
         print("[TextureBaker] frames: \(totalFrames) total, \(textureLoadFailures) texture-load failures, \(bufferSetupFailures) buffer/command-buffer setup failures")
-        do {
-            let counters = debugCountersBuffer.contents().bindMemory(to: UInt32.self, capacity: 4)
-            print("[TextureBaker] fragment outcomes (summed over all frames): behindCamera=\(counters[0]) outOfBounds=\(counters[1]) occluded=\(counters[2]) written=\(counters[3])")
-        }
 
         // 8. 정규화(accumColor/accumWeight -> 최종 텍스처)
         let finalTexDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: textureSize, height: textureSize, mipmapped: false)
