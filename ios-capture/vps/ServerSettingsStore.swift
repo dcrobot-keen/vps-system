@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 
 /// VPS 서버 주소(예: `http://100.x.x.x:8000`, Tailscale IP라 사용자가 직접 입력)와
