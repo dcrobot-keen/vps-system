@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://dcrobot-keen/scan-format/manifest.schema.json",
+  "title": "scan_<name>/manifest.json",
+  "description": "vps-system/ios-capture(ScanSessionManager.swift)가 세션 종료 시 한 번 쓰는 파일. 2026-08-29 기준 이 필드들을 실제로 읽는 Python 코드는 없다 -- ios-capture 자체(ProjectStore.swift, 온디바이스 갤러리 UI)만 start_time/frame_count를 읽는다.",
+  "type": "object",
+  "required": [
+    "session_name",
+    "device_model",
+    "system_version",
+    "start_time",
+    "end_time",
+    "frame_count",
+    "capture_interval_seconds",
+    "capture_min_distance_meters"
+  ],
+  "properties": {
+    "session_name": { "type": "string" },
+    "device_model": { "type": "string" },
+    "system_version": { "type": "string" },
+    "start_time": { "type": "number", "description": "유닉스 epoch 초. poses.jsonl의 timestamp(ARKit 프레임 타임스탬프)와는 다른 시계다." },
+    "end_time": { "type": "number", "description": "유닉스 epoch 초." },
+    "frame_count": { "type": "integer", "minimum": 0 },
+    "capture_interval_seconds": { "type": "number" },
+    "capture_min_distance_meters": { "type": "number" }
+  },
+  "additionalProperties": true
+}

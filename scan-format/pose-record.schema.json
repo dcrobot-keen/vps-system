@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://dcrobot-keen/scan-format/pose-record.schema.json",
+  "title": "scan_<name>/poses/poses.jsonl -- 한 줄(프레임 하나)",
+  "description": "vps-system/pipeline(scan_loader.py), dc-vps-digital-twin(convert_to_colmap.py, convert_to_transforms_json.py)이 동일한 키 이름으로 소비하는 형식. scan-to-map-studio는 이 파일을 전혀 읽지 않는다(scan.usdz만 사용).",
+  "type": "object",
+  "required": [
+    "frame_id",
+    "timestamp",
+    "rgb_path",
+    "depth_path",
+    "camera_transform",
+    "intrinsics",
+    "tracking_state"
+  ],
+  "properties": {
+    "frame_id": { "type": "integer", "minimum": 0 },
+    "timestamp": { "type": "number", "description": "ARKit 프레임 타임스탬프. 유닉스 epoch가 아니다 -- manifest.json의 start_time/end_time과 시계가 다르다." },
+    "rgb_path": { "type": "string", "description": "scan_<name>/ 기준 상대경로, 예: rgb/frame_00001.jpg" },
+    "depth_path": { "type": "string", "description": "scan_<name>/ 기준 상대경로, 예: depth/frame_00001.depth. 같은 이름의 .conf(신뢰도) 파일이 옆에 있다고 가정한다." },
+    "camera_transform": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "array",
+        "minItems": 4,
+        "maxItems": 4,
+        "items": { "type": "number" }
+      },
+      "description": "4x4, row-major, camera-to-world. ARKit/OpenGL 축 규약(Y-up). 마지막 행은 항상 [0,0,0,1]로 고정."
+    },
+    "intrinsics": {
+      "type": "object",
+      "description": "RGB 해상도 기준 카메라 내부 파라미터. 프레임마다 값이 실려 있지만 실제로는 기기당 상수다.",
+      "required": ["fx", "fy", "cx", "cy", "width", "height"],
+      "properties": {
+        "fx": { "type": "number" },
+        "fy": { "type": "number" },
+        "cx": { "type": "number" },
+        "cy": { "type": "number" },
+        "width": { "type": "integer" },
+        "height": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    "tracking_state": {
+      "type": "string",
+      "enum": ["normal", "notAvailable", "limited"],
+      "description": "세 소비자 모두 \"normal\"이 아닌 프레임은 걸러낸다."
+    }
+  },
+  "additionalProperties": true
+}
