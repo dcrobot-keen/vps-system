@@ -2,8 +2,9 @@ import SwiftUI
 import UIKit
 
 /// 캡처된 사진을 전체화면으로 스와이프해서 넘겨보고, 각 사진은 핀치/더블탭으로
-/// 확대해서 볼 수 있다. 썸네일 그리드는 90pt짜리라 얼굴 모자이크(deface,
-/// FaceRedactor)가 실제로 적용됐는지 확인하기엔 너무 작아서 추가됨.
+/// 확대해서 볼 수 있다. `ProjectDetailView`의 "캡처된 사진 보기" 버튼으로 연다 —
+/// 얼굴 모자이크(deface, FaceRedactor)가 실제로 적용됐는지 확대해서 확인하기
+/// 위한 용도로 추가됨.
 struct PhotoGalleryView: View {
     let urls: [URL]
     let startIndex: Int
@@ -84,8 +85,7 @@ struct ZoomableImageView: UIViewRepresentable {
         doubleTap.numberOfTapsRequired = 2
         scrollView.addGestureRecognizer(doubleTap)
 
-        // ThumbnailView와 같은 배경 로드 패턴 -- 원본 해상도 JPEG 디코딩을 메인
-        // 스레드에서 하지 않는다.
+        // 원본 해상도 JPEG 디코딩을 메인 스레드에서 하지 않는다.
         DispatchQueue.global(qos: .userInitiated).async {
             let image = UIImage(contentsOfFile: url.path)
             DispatchQueue.main.async {

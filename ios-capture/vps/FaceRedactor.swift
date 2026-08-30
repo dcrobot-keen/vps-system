@@ -13,18 +13,33 @@ enum FaceRedactor {
     /// 얼굴이 하나도 없으면 원본을 그대로 반환한다(불필요한 재렌더링 방지 --
     /// 대부분의 프레임에는 사람이 없으므로 이 경로가 훨씬 자주 탄다).
     static func redactFaces(in ciImage: CIImage) -> CIImage {
-        let request = VNDetectFaceRectanglesRequest()
-        // ARKit의 capturedImage는 항상 raw(landscape) 방향이고 이 앱은 회전 보정을
-        // 하지 않는 정책이다(ScanSessionManager 상단 주석 참고) -- 스캔은 보통
-        // 세로로 들고 하므로, 그 경우 landscape 버퍼를 세워서 보려면 시계 방향
-        // 90도 회전이 필요하다(.right). 기기를 가로로 들고 스캔하면 검출 정확도가
-        // 떨어질 수 있다(알려진 한계).
-        let handler = VNImageRequestHandler(ciImage: ciImage, orientation: .right)
-        try? handler.perform([request])
+        // 실기 테스트 결과 얼굴이 전혀 검출되지 않았다(2026-08-30) -- 가장 유력한
+        // 원인은 orientation 가정이 틀렸던 것: ARKit의 capturedImage는 raw(landscape)
+        // 버퍼인데, 세로로 들고 스캔한다고 가정해 .right 하나만 시도했었다. 실제
+        // 기기를 어떻게 들고 스캔하는지 이 코드는 알 수 없으므로(UIDevice.orientation을
+        // 추적하는 코드가 이 앱에 없음), 가능성 높은 두 orientation(.right = 세로로
+        // 들었을 때 보정 필요, .up = 버퍼가 이미 똑바른 경우)에서 각각 검출해 합친다.
+        // 프레임당 Vision 호출이 2배가 되지만, 얼굴을 완전히 놓치는 것보다 낫다 --
+        // 두 orientation 모두 원본 좌표계 기준으로 boundingBox를 돌려주므로 합치는 데
+        // 별도 좌표 변환이 필요 없다.
+        var observations: [VNFaceObservation] = []
+        for orientation: CGImagePropertyOrientation in [.right, .up] {
+            let request = VNDetectFaceRectanglesRequest()
+            let handler = VNImageRequestHandler(ciImage: ciImage, orientation: orientation)
+            do {
+                try handler.perform([request])
+                if let found = request.results as? [VNFaceObservation] {
+                    observations.append(contentsOf: found)
+                }
+            } catch {
+                print("[deface] Vision 얼굴 검출 실패(orientation=\(orientation)): \(error)")
+            }
+        }
 
-        guard let observations = request.results as? [VNFaceObservation], !observations.isEmpty else {
+        guard !observations.isEmpty else {
             return ciImage
         }
+        print("[deface] 얼굴 \(observations.count)개 검출, 모자이크 적용")
 
         var result = ciImage
         let imageExtent = ciImage.extent

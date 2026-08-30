@@ -1,9 +1,9 @@
-import ImageIO
 import SceneKit
 import SwiftUI
 
 /// 프로젝트 하나의 내용을 보여주는 화면. scan.usdz가 있으면 SceneKit으로 3D mesh를
-/// 바로 볼 수 있고, 캡처된 RGB 사진들을 썸네일 그리드로 훑어볼 수 있다.
+/// 바로 볼 수 있고, "캡처된 사진 보기" 버튼으로 전체화면 사진 갤러리(PhotoGalleryView,
+/// 핀치줌 지원)를 열 수 있다.
 ///
 /// QuickLook 대신 SceneKit(SCNView)을 쓴다 — 앱이 스캔 화면(ScanView)에서 이미
 /// ARSCNView/SceneKit을 쓰고 있어서 여기로 전환할 때 추가 프레임워크 초기화 비용이
@@ -32,8 +32,6 @@ struct ProjectDetailView: View {
 
     @State private var isShowingPhotoGallery = false
     @State private var selectedPhotoIndex = 0
-
-    private let columns = [GridItem(.adaptive(minimum: 90), spacing: 4)]
 
     var body: some View {
         ScrollView {
@@ -65,20 +63,14 @@ struct ProjectDetailView: View {
                 }
 
                 if !rgbURLs.isEmpty {
-                    Text("캡처된 사진 (\(rgbURLs.count)장)")
-                        .font(.headline)
-
-                    LazyVGrid(columns: columns, spacing: 4) {
-                        ForEach(Array(rgbURLs.enumerated()), id: \.offset) { index, url in
-                            Button {
-                                selectedPhotoIndex = index
-                                isShowingPhotoGallery = true
-                            } label: {
-                                ThumbnailView(url: url)
-                            }
-                            .buttonStyle(.plain)
-                        }
+                    Button {
+                        selectedPhotoIndex = 0
+                        isShowingPhotoGallery = true
+                    } label: {
+                        Label("캡처된 사진 보기 (\(rgbURLs.count)장)", systemImage: "photo.on.rectangle")
+                            .frame(maxWidth: .infinity)
                     }
+                    .buttonStyle(.bordered)
                 }
             }
             .padding()
@@ -439,49 +431,4 @@ private struct GLBSceneView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: SCNView, context: Context) {}
-}
-
-/// ImageIO의 썸네일 생성(CGImageSourceCreateThumbnailAtIndex)으로 원본 JPEG를 전부
-/// 디코딩하지 않고 축소된 이미지만 비동기로 불러온다 — 사진이 수백 장이어도
-/// LazyVGrid가 화면에 보이는 셀만 로드하므로 괜찮다.
-private struct ThumbnailView: View {
-    let url: URL
-    @State private var image: UIImage?
-
-    var body: some View {
-        Group {
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            } else {
-                Rectangle()
-                    .fill(Color.gray.opacity(0.2))
-            }
-        }
-        .frame(width: 90, height: 90)
-        .clipped()
-        .task {
-            image = await Self.loadThumbnail(url: url)
-        }
-    }
-
-    private static func loadThumbnail(url: URL) async -> UIImage? {
-        await Task.detached(priority: .userInitiated) {
-            guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
-            let options: [CFString: Any] = [
-                kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceThumbnailMaxPixelSize: 200,
-                // false로 둔다: 이 앱은 raw(landscape) 그대로 저장하는 정책이라
-                // (poses.jsonl의 intrinsics도 raw 기준, Python 파이프라인도
-                // IMREAD_IGNORE_ORIENTATION으로 방향 태그를 무시함) EXIF 방향
-                // 태그를 "적용"하면 오히려 다르게(뒤집혀) 보인다.
-                kCGImageSourceCreateThumbnailWithTransform: false,
-            ]
-            guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
-                return nil
-            }
-            return UIImage(cgImage: cgImage)
-        }.value
-    }
 }
