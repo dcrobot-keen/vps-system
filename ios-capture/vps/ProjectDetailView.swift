@@ -28,6 +28,8 @@ struct ProjectDetailView: View {
     @State private var uploadSuccessRoomID: String?
     @State private var uploadErrorMessage: String?
 
+    @State private var isShowingLocalizeView = false
+
     private let columns = [GridItem(.adaptive(minimum: 90), spacing: 4)]
 
     var body: some View {
@@ -48,6 +50,16 @@ struct ProjectDetailView: View {
                 }
 
                 vpsUploadSection
+
+                if project.hasWorldMap {
+                    Button {
+                        isShowingLocalizeView = true
+                    } label: {
+                        Label("위치 확인 (서버 없이)", systemImage: "location.viewfinder")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                }
 
                 if !rgbURLs.isEmpty {
                     Text("캡처된 사진 (\(rgbURLs.count)장)")
@@ -80,6 +92,11 @@ struct ProjectDetailView: View {
                     }
                     .toolbarBackground(.black.opacity(0.4), for: .navigationBar)
                     .toolbarBackground(.visible, for: .navigationBar)
+            }
+        }
+        .fullScreenCover(isPresented: $isShowingLocalizeView) {
+            NavigationStack {
+                LocalizeView(project: project)
             }
         }
         .fullScreenCover(isPresented: $isShowingTexturedViewer) {

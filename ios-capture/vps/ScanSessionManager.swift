@@ -137,14 +137,28 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         let meshAnchors = session.currentFrame?.anchors.compactMap { $0 as? ARMeshAnchor } ?? []
         print("[mesh] stopSession 시점 anchor 개수: \(meshAnchors.count), "
             + "총 vertex 수: \(meshAnchors.reduce(0) { $0 + $1.geometry.vertices.count })")
+        statusMessage = "저장 중..."
+
+        // getCurrentWorldMap은 세션이 아직 running 상태일 때 호출해야 한다 -- 먼저
+        // pause()부터 하면 재국지화에 쓸 특징점이 덜 확보된 상태로 지도가 얼어붙을
+        // 수 있다. 콜백(스레드 보장 없음)을 받은 뒤에야 pause()/나머지 정리를 한다.
+        session.getCurrentWorldMap { [weak self] worldMap, error in
+            DispatchQueue.main.async {
+                self?.finishStopSession(meshAnchors: meshAnchors, worldMap: worldMap, worldMapError: error)
+            }
+        }
+    }
+
+    private func finishStopSession(meshAnchors: [ARMeshAnchor], worldMap: ARWorldMap?, worldMapError: Error?) {
         session.pause()
         try? posesFile.close()
         writeManifest()
         let meshStatus = exportMesh(meshAnchors)
+        let worldMapStatus = exportWorldMap(worldMap, error: worldMapError)
         isRunning = false
         guidanceMessage = nil
         lastOutputDir = outputDir
-        statusMessage = "정지됨 (\(frameCount) 프레임, \(outputDir.lastPathComponent))\(meshStatus)"
+        statusMessage = "정지됨 (\(frameCount) 프레임, \(outputDir.lastPathComponent))\(meshStatus)\(worldMapStatus)"
     }
 
     /// scan.usdz로 내보낸다 (scan-to-map-studio --usdz 입력용, 지도화/robot 연동 트랙).
@@ -169,6 +183,28 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         } catch {
             print("[mesh] scan.usdz export 실패: \(error)")
             return ", mesh export 실패(\(error.localizedDescription))"
+        }
+    }
+
+    /// 재국지화(LocalizeSessionManager)가 나중에 initialWorldMap으로 로드해서 "지금
+    /// 이 스캔 공간의 어디쯤인가"를 서버 없이 온디바이스로 확인하는 데 쓰는 핵심
+    /// 산출물. rgb/depth/poses(VPS DB 빌드용)와는 독립된 산출물이라 이게 실패해도
+    /// 스캔 결과 자체는 무사하다.
+    private func exportWorldMap(_ worldMap: ARWorldMap?, error: Error?) -> String {
+        guard let outputDir else { return "" }
+        guard let worldMap else {
+            print("[worldmap] getCurrentWorldMap 실패: \(error?.localizedDescription ?? "알 수 없는 오류")")
+            return ", 위치확인용 지도 저장 실패"
+        }
+        let url = outputDir.appendingPathComponent("worldmap.arexperience")
+        do {
+            let data = try NSKeyedArchiver.archivedData(withRootObject: worldMap, requiringSecureCoding: true)
+            try data.write(to: url)
+            print("[worldmap] worldmap.arexperience 저장 완료 (\(data.count) bytes, anchor \(worldMap.anchors.count)개)")
+            return ", 위치확인용 지도 저장됨"
+        } catch {
+            print("[worldmap] worldmap 저장 실패: \(error)")
+            return ", 위치확인용 지도 저장 실패(\(error.localizedDescription))"
         }
     }
 

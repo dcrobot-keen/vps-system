@@ -8,6 +8,7 @@ struct ScanProject: Identifiable, Equatable {
     let url: URL
     let frameCount: Int?
     let hasUSDZ: Bool
+    let hasWorldMap: Bool
     let startTime: Date?
 
     static func == (lhs: ScanProject, rhs: ScanProject) -> Bool {
@@ -44,6 +45,7 @@ final class ProjectStore: ObservableObject {
                     url: url,
                     frameCount: manifest?["frame_count"] as? Int,
                     hasUSDZ: fm.fileExists(atPath: url.appendingPathComponent("scan.usdz").path),
+                    hasWorldMap: fm.fileExists(atPath: url.appendingPathComponent("worldmap.arexperience").path),
                     startTime: startTime
                 )
             }
