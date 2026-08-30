@@ -3,8 +3,9 @@ import SceneKit
 import SwiftUI
 
 /// 프로젝트 하나의 내용을 보여주는 화면. scan.usdz가 있으면 SceneKit으로 3D mesh를
-/// 바로 볼 수 있고, 캡처된 RGB 사진들을 썸네일 그리드로 훑어보다가 아무 사진이나
-/// 탭하면 그 사진부터 전체화면 갤러리(PhotoGalleryView, 핀치줌 지원)가 열린다.
+/// 바로 볼 수 있고, "캡처된 사진" 버튼을 누르면 썸네일 그리드가 펼쳐진다. 아무
+/// 썸네일이나 탭하면 그 사진부터 전체화면 갤러리(PhotoGalleryView, 핀치줌 지원)가
+/// 열린다.
 ///
 /// QuickLook 대신 SceneKit(SCNView)을 쓴다 — 앱이 스캔 화면(ScanView)에서 이미
 /// ARSCNView/SceneKit을 쓰고 있어서 여기로 전환할 때 추가 프레임워크 초기화 비용이
@@ -33,6 +34,7 @@ struct ProjectDetailView: View {
 
     @State private var isShowingPhotoGallery = false
     @State private var selectedPhotoIndex = 0
+    @State private var isShowingThumbnailGrid = false
 
     private let columns = [GridItem(.adaptive(minimum: 90), spacing: 4)]
 
@@ -66,18 +68,26 @@ struct ProjectDetailView: View {
                 }
 
                 if !rgbURLs.isEmpty {
-                    Text("캡처된 사진 (\(rgbURLs.count)장)")
-                        .font(.headline)
+                    Button {
+                        withAnimation { isShowingThumbnailGrid.toggle() }
+                    } label: {
+                        Label("캡처된 사진 (\(rgbURLs.count)장)", systemImage: isShowingThumbnailGrid ? "chevron.down" : "chevron.right")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .font(.headline)
 
-                    LazyVGrid(columns: columns, spacing: 4) {
-                        ForEach(Array(rgbURLs.enumerated()), id: \.offset) { index, url in
-                            Button {
-                                selectedPhotoIndex = index
-                                isShowingPhotoGallery = true
-                            } label: {
-                                ThumbnailView(url: url)
+                    if isShowingThumbnailGrid {
+                        LazyVGrid(columns: columns, spacing: 4) {
+                            ForEach(Array(rgbURLs.enumerated()), id: \.offset) { index, url in
+                                Button {
+                                    selectedPhotoIndex = index
+                                    isShowingPhotoGallery = true
+                                } label: {
+                                    ThumbnailView(url: url)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                 }
