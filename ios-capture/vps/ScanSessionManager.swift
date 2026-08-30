@@ -345,11 +345,15 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
 
     // MARK: - Frame saving
 
+    /// 얼굴 검출+모자이크(FaceRedactor)를 JPEG 인코딩 직전에 거친다 -- 이 함수가
+    /// 디스크에 쓰는 게 곧 VPS 업로드/텍스처 베이킹/썸네일이 보는 전부이므로,
+    /// 여기 한 곳만 처리하면 원본(비식별화 전) 얼굴 픽셀이 어디에도 안 남는다.
     private func saveRGB(_ pixelBuffer: CVPixelBuffer, index: Int) {
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        let redacted = FaceRedactor.redactFaces(in: ciImage)
         guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
               let jpegData = ciContext.jpegRepresentation(
-                  of: ciImage,
+                  of: redacted,
                   colorSpace: colorSpace,
                   options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.85]
               )
