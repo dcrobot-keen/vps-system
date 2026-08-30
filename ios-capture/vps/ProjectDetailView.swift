@@ -30,6 +30,9 @@ struct ProjectDetailView: View {
 
     @State private var isShowingLocalizeView = false
 
+    @State private var isShowingPhotoGallery = false
+    @State private var selectedPhotoIndex = 0
+
     private let columns = [GridItem(.adaptive(minimum: 90), spacing: 4)]
 
     var body: some View {
@@ -66,8 +69,14 @@ struct ProjectDetailView: View {
                         .font(.headline)
 
                     LazyVGrid(columns: columns, spacing: 4) {
-                        ForEach(rgbURLs, id: \.self) { url in
-                            ThumbnailView(url: url)
+                        ForEach(Array(rgbURLs.enumerated()), id: \.offset) { index, url in
+                            Button {
+                                selectedPhotoIndex = index
+                                isShowingPhotoGallery = true
+                            } label: {
+                                ThumbnailView(url: url)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -92,6 +101,11 @@ struct ProjectDetailView: View {
                     }
                     .toolbarBackground(.black.opacity(0.4), for: .navigationBar)
                     .toolbarBackground(.visible, for: .navigationBar)
+            }
+        }
+        .fullScreenCover(isPresented: $isShowingPhotoGallery) {
+            PhotoGalleryView(urls: rgbURLs, startIndex: selectedPhotoIndex) {
+                isShowingPhotoGallery = false
             }
         }
         .fullScreenCover(isPresented: $isShowingLocalizeView) {
