@@ -3,6 +3,15 @@
 > 2026-09-04 시작. 방향 **C**: 기본은 서버 없이 완결되는 **범용 LiDAR 룸 스캐너**(1.0 스코프),
 > 로봇 스택(VPS 서버) 연동은 설정의 **"고급 모드"** 뒤에 숨긴 선택 기능.
 > 이유: App Store 심사관은 우리 서버가 없다. 외부 서비스 없이는 쓸모없는 앱은 리젝된다.
+>
+> **배포 방식 결정(2026-09-04): 공개 앱스토어 출시 대신 TestFlight(내부 테스트)만 사용.**
+> 개인(Individual) 개발자 계정은 앱스토어 상품 페이지의 "판매자(Seller)"에 실명이
+> 공개적으로 노출되는데(Organization 계정만 회사명 표시 가능, D-U-N-S+법인 필요 — 이미
+> 개인 계정으로 정한 이유와 충돌), 회사에 알리고 싶지 않다는 이유로 공개 출시 자체를
+> 보류. 내부 테스트(Internal Testing)는 Apple 심사 없이 본인 기기에만 설치되고
+> 앱스토어에 전혀 노출되지 않는다 — 로봇 파이프라인용 개인 도구로는 이걸로 충분.
+> 아래 체크리스트의 "공개 상품 페이지" 전용 항목(스크린샷, App Privacy 라벨, 심사
+> 노트)은 실제 공개 출시를 결정하기 전까진 급하지 않음 — 표시로 남겨둠.
 
 ## 전체 파이프라인에서 이 앱의 위치 (2026-09-04 재검토)
 
@@ -33,15 +42,16 @@
 - [x] Files 앱 노출: `UIFileSharingEnabled` + `LSSupportsOpeningDocumentsInPlace`
 - [x] 서버 연동을 "고급 모드" 뒤로 (기본 꺼짐, `ServerSettingsStore.isAdvancedModeEnabled`)
 - [x] `LocalizeView`의 "정합 파일 가져오기"(툴바 다운로드 아이콘)도 고급 모드 게이트 뒤로 — 파이프라인(scan-to-map-studio) 산출물이라 일반 사용자에겐 의미 없음
-- [ ] 심사 노트에 고급 모드 용도 명시(App Review 2.3.1 "숨겨진 기능" 오해 방지) + 서버 없이 전체 플로우 데모 가능함을 명시
+- [ ] ~~심사 노트에 고급 모드 용도 명시~~ — **TestFlight 내부 테스트는 Apple 심사 자체가 없음(위 배포 방식 결정 참고). 공개 출시로 전환할 때만 필요.**
 - [x] **제품명/브랜드/번들 ID — 결정(2026-09-04): "ScanMesh" / "스캔메시", `com.dcrobot.scanmesh`** — App Store 사전 검색으로 동일/유사 이름 없음을 확인하고 선택. `INFOPLIST_KEY_CFBundleDisplayName`(홈 화면 아이콘 이름), `PRODUCT_BUNDLE_IDENTIFIER`, `ProjectListView`의 네비게이션 타이틀("스캔메시")까지 반영. Xcode 내부 타깃/프로덕트 이름 자체는 여전히 "vps"(cosmetic, 사용자에게 안 보임 — 바꾸려면 Xcode의 Rename 리팩터로 해야 안전, 필수 아님)
 - [x] 개발자 계정: **개인**으로 결정(2026-09-04) — 현재 팀 `GW4C35M572` 그대로 사용
-- [ ] 앱 아이콘, 런치 스크린(현재 자동 생성), 스크린샷(iPhone 6.9"/6.5", **iPad 13"** — 아래 iPad 지원 결정으로 인해 필수)
-- [x] **개인정보 처리방침 — GitHub Pages로 결정(2026-09-04)**: `docs/privacy/index.html`(한/영 병기) 작성 + `vps-system` 저장소에 Pages 활성화. URL: `https://dcrobot-keen.github.io/vps-system/privacy/`. **문의 이메일 주소가 아직 placeholder — 제출 전 실제 주소로 교체 필요**
-- [ ] App Privacy 라벨(App Store Connect에서 별도 입력) — 사진 저장, 고급 모드 시 서버 전송 항목 신고
+- [ ] 앱 아이콘, 런치 스크린(현재 자동 생성) — TestFlight에도 아이콘은 그대로 보이므로 여전히 필요
+- [ ] ~~스크린샷(iPhone 6.9"/6.5", iPad 13")~~ — 공개 앱스토어 상품 페이지 전용 요건이라 TestFlight 내부 테스트만으로는 불필요(공개 출시 결정 시 재검토)
+- [x] **개인정보 처리방침 — GitHub Pages로 결정(2026-09-04)**: `docs/privacy/index.html`(한/영 병기) 작성 + `vps-system` 저장소에 Pages 활성화. URL: `https://dcrobot-keen.github.io/vps-system/privacy/`. **문의 이메일 주소가 아직 placeholder — 공개 출시 전 실제 주소로 교체 필요(TestFlight 내부 테스트만으로는 급하지 않음). 이 저장소(`dcrobot-keen`)가 실명과 연결 가능한지도 같이 점검할 것(회사에 안 알리고 싶다는 목적과 관련)**
+- [ ] ~~App Privacy 라벨(App Store Connect)~~ — 공개 상품 페이지 요건. TestFlight 내부 테스트에 필요한지는 미확인(Apple이 최근 TestFlight에도 일부 요구하는 경우가 있다고 알려져 있어 실제 업로드 시점에 App Store Connect가 요구하면 그때 채움)
 - [x] **로컬라이제이션 — 정적 UI 문자열** — `vps/Localizable.xcstrings` 작성(ko 소스 + en 번역, 37개 항목: 화면 타이틀/버튼/탭/섹션 헤더·푸터/placeholder/빈 상태 안내 전부). 이 과정에서 실제 버그 2개 발견·수정: `ServerSettingsView`/`ScanView`가 `Text("A" + "B")`처럼 두 리터럴을 `+`로 이어붙이던 곳이 있었는데, `+`는 `String`에만 있어서 그 결과가 `String`으로 타입이 굳어 `Text(_:LocalizedStringKey)`가 아니라 `Text(_:String)`(그대로 표시, 지역화 절대 안 됨) 쪽으로 조용히 빠지고 있었다 — 리터럴을 하나로 합치고(`ScanView`의 경우 `LocalizedStringKey` 타입 명시까지) 고침. **범위 밖(다음 배치)**: `statusMessage`/`guidanceMessage`/`*ErrorMessage`류(`@Published var x: String`에 동적으로 조립해 대입 후 `Text(변수)`로 표시 — 애초에 `String` 타입이라 String Catalog가 못 잡음, `String(localized:)`로 만드는 리팩터가 따로 필요)와 `LocalizeView.coordinateLine`의 `label` 매개변수(같은 이유)는 한국어로 남음. `\(count)장`처럼 리터럴에 보간이 있는 것들(`"캡처된 사진 (\(rgbURLs.count)장)"` 등 6곳)은 Text/Label에 직접 리터럴로 들어가 있어 로컬라이즈 대상은 맞지만, Xcode 실제 추출기가 만드는 정확한 `%lld`/`%@` 키 형식을 여기서 손으로 재현하면 틀릴 위험이 있어 이번엔 안 넣었다 — **맥에서 한 번 빌드하면 `SWIFT_EMIT_LOC_STRINGS=YES`가 이미 켜져 있어 같은 카탈로그에 자동으로 추가됨, 그때 en 번역만 채우면 됨**
 - [x] **iPad 지원 유지로 결정(2026-09-04)** — `TARGETED_DEVICE_FAMILY = "1,2"` 이미 그 상태(변경 불필요). iPad 스크린샷/레이아웃 QA는 여전히 필요(위 체크리스트 항목)
-- [ ] 심사 노트: 서버 없이 전체 플로우 데모 가능함을 명시, LiDAR 기기 필요 명시
+- [ ] ~~심사 노트: 서버 없이 전체 플로우 데모 가능함을 명시, LiDAR 기기 필요 명시~~ — 위와 동일 사유로 공개 출시 결정 시로 미룸
 
 ### B. 실기 검증 (맥 + LiDAR 기기 필요)
 - [x] **맥 + 실기기 빌드 성공 확인(2026-09-04)** — 배포 타깃 17.0 하향, `INFOPLIST_FILE=Info.plist` + `GENERATE_INFOPLIST_FILE=YES` 병합 둘 다 실기기 빌드로 통과(CI의 시뮬레이터 빌드보다 더 강한 확인). availability 에러 없음.
@@ -84,7 +94,7 @@
 - [ ] 업로드 background URLSession(고급 모드)
 - [ ] 테스트 확장: ZipArchiver, PCD/PLY/GLB 로더, manifest 기록, FaceRedactor(얼굴 샘플 이미지 필요)
 - [x] CI 착수 + **실제 GitHub Actions 러너에서 검증 완료**: `.github/workflows/ios.yml` + `vps.xcodeproj/xcshareddata/xcschemes/vps.xcscheme`(원래 커밋 안 돼 있던 스킴을 새로 만듦). 첫 실행은 "Scheme vps is not currently configured for the build action"로 실패 — 스킴 XML의 설명 주석에 `--`(이 세션이 습관적으로 쓰는 구분자)가 들어있어 Xcode의 스킴 파서가 파일 전체를 로드 실패로 처리한 것이 원인이었다(XML 1.0 스펙상 주석 본문에 `--`는 금지). 주석을 지우자 `xcodebuild build`가 실제 Xcode 26.6에서 통과(초록불) — 이 세션 최초로 진짜 컴파일 성공을 확인한 사례. `xcodebuild test`는 `vpsTests` 타깃이 없어 예상대로 "Scheme vps is not currently configured for the test action"로 실패하지만 `continue-on-error`라 전체는 통과 — **타깃 생성 후 이 continue-on-error를 지워서 필수 게이트로 승격할 것**
-- [ ] TestFlight 외부 테스터
+- [ ] TestFlight 내부 테스트로 실제 빌드 업로드(2026-09-04 배포 방식 결정 참고 — 심사 없음, 본인 기기 설치만). 외부 테스터는 아직 계획 없음
 
 **실제 CI 검증(2026-09-04):** 위 세 항목(String Catalog, 캡처 루프 오프로딩, OSLog) 커밋 후 GitHub Actions에서 `xcodebuild build` 그대로 통과(초록불, 52초) — `os.Logger` + `privacy: .public`, `NSLock` 백프레셔, `Localizable.xcstrings`, `LocalizedStringKey` 타입 명시까지 전부 실제 Xcode 26.6에서 컴파일 확인됨.
 
@@ -165,8 +175,9 @@
   새로 설계해야 함 — vps-system/scan-to-map-studio/pathfinder 세 저장소에 걸친 별도
   작업으로 남겨둠.
 
-## 결정 (2026-09-04) — 4개 전부 완료
-1. ~~제품명(영/한) + 번들 ID~~ → **ScanMesh / 스캔메시**, `com.dcrobot.scanmesh`
+## 결정 (2026-09-04) — 5개 전부 완료
+1. ~~제품명(영/한) + 번들 ID~~ → **ScanMesh / 스캔메시**, `com.dcrobot.scanmesh` (2026-09-04 재확인: 위치확인/바닥 평면까지 기능이 늘었어도 여전히 유효 — 스캔이 핵심 동작이고 나머지는 그 파생 산출물이라는 판단. 표시 이름은 번들 ID와 달리 언제든 바꿀 수 있어 되돌릴 수 없는 결정이 아님)
 2. ~~개발자 계정 주체~~ → **개인**
 3. ~~1.0에 iPad 포함 여부~~ → **포함**
 4. ~~개인정보 처리방침 호스팅 위치~~ → **GitHub Pages**(`docs/privacy/`, 위 참고)
+5. ~~공개 앱스토어 출시 여부~~ → **TestFlight 내부 테스트만(공개 출시 보류)** — 개인 계정은 실명이 판매자로 공개되는데 회사에 알리고 싶지 않아서(맨 위 배포 방식 참고)
