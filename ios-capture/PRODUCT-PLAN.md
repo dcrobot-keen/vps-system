@@ -34,7 +34,7 @@
 - [x] 서버 연동을 "고급 모드" 뒤로 (기본 꺼짐, `ServerSettingsStore.isAdvancedModeEnabled`)
 - [x] `LocalizeView`의 "정합 파일 가져오기"(툴바 다운로드 아이콘)도 고급 모드 게이트 뒤로 — 파이프라인(scan-to-map-studio) 산출물이라 일반 사용자에겐 의미 없음
 - [ ] 심사 노트에 고급 모드 용도 명시(App Review 2.3.1 "숨겨진 기능" 오해 방지) + 서버 없이 전체 플로우 데모 가능함을 명시
-- [ ] **제품명/브랜드/번들 ID** — 현재 `com.dcrobot.keen.vps`, 타이틀 "dc-vps 스캔". **사용자 결정 필요(남은 마지막 하나)**
+- [x] **제품명/브랜드/번들 ID — 결정(2026-09-04): "ScanMesh" / "스캔메시", `com.dcrobot.scanmesh`** — App Store 사전 검색으로 동일/유사 이름 없음을 확인하고 선택. `INFOPLIST_KEY_CFBundleDisplayName`(홈 화면 아이콘 이름), `PRODUCT_BUNDLE_IDENTIFIER`, `ProjectListView`의 네비게이션 타이틀("스캔메시")까지 반영. Xcode 내부 타깃/프로덕트 이름 자체는 여전히 "vps"(cosmetic, 사용자에게 안 보임 — 바꾸려면 Xcode의 Rename 리팩터로 해야 안전, 필수 아님)
 - [x] 개발자 계정: **개인**으로 결정(2026-09-04) — 현재 팀 `GW4C35M572` 그대로 사용
 - [ ] 앱 아이콘, 런치 스크린(현재 자동 생성), 스크린샷(iPhone 6.9"/6.5", **iPad 13"** — 아래 iPad 지원 결정으로 인해 필수)
 - [x] **개인정보 처리방침 — GitHub Pages로 결정(2026-09-04)**: `docs/privacy/index.html`(한/영 병기) 작성 + `vps-system` 저장소에 Pages 활성화. URL: `https://dcrobot-keen.github.io/vps-system/privacy/`. **문의 이메일 주소가 아직 placeholder — 제출 전 실제 주소로 교체 필요**
@@ -66,8 +66,8 @@
 - [ ] iCloud/Files 동기화, 프로젝트 이름 변경/정리 UI
 - [ ] 고급 모드 확장(정합 파일 자동 수신 등)
 
-## 결정 (2026-09-04)
-1. **제품명(영/한) + 번들 ID** — 아직 미정, **마지막 남은 결정 사항**
+## 결정 (2026-09-04) — 4개 전부 완료
+1. ~~제품명(영/한) + 번들 ID~~ → **ScanMesh / 스캔메시**, `com.dcrobot.scanmesh`
 2. ~~개발자 계정 주체~~ → **개인**
 3. ~~1.0에 iPad 포함 여부~~ → **포함**
 4. ~~개인정보 처리방침 호스팅 위치~~ → **GitHub Pages**(`docs/privacy/`, 위 참고)

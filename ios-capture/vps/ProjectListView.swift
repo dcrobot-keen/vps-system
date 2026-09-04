@@ -25,7 +25,7 @@ struct ProjectListView: View {
                     }
                 }
             }
-            .navigationTitle("dc-vps 스캔")
+            .navigationTitle("스캔메시")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
