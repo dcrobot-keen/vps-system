@@ -496,6 +496,26 @@
           }
         }
       }
+    },
+    "내보내기": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export"
+          }
+        }
+      }
+    },
+    "내보내기 실패": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export Failed"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

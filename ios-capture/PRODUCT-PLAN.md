@@ -206,10 +206,28 @@ export는 "프로젝트(합쳐진 것) 단위만" 하기로 결정, 스캔 개�
   - [ ] 실기 검증 안 됨 — 특히 "이어서 스캔"의 재국지화가 실제로 잘 되는지,
     그렇게 이어붙인 두 스캔이 실제로 같은 좌표계에 정확히 놓이는지.
 
-**2단계(다음 작업) — 합치기 + export 피커:** 그룹 안 스캔들(이미 같은 좌표계)의
-mesh/바닥 평면을 하나로 합치는 계산, PLY/PCD writer(현재 로더만 있고 writer 없음
-— GLB는 `GLBWriter` 있음), 프로젝트 화면에 ply/pcd/glb/zip 고르는 export 피커.
-아직 미착수.
+**2단계(이번, 완료) — 합치기 + export 피커:**
+- `ScanGroupMerger.swift`(신규): 그룹 안 스캔들의 `scan.usdz`를 `MeshUnifier.load`로
+  각각 읽어 위치/인덱스 버퍼를 그대로 이어붙이고(정합 계산 없음, 이미 같은 좌표계),
+  `MeshUnifier.weld`로 스캔 경계의 근접 중복 정점만 정리(TextureBaker와 같은 처리),
+  `MeshGeometryBuilder.computeFaceNormals`로 normal 계산. `MergedMesh.unindexedForGLB()`
+  는 GLB export 전용 보조(GLBWriter가 인덱스 버퍼를 지원 안 해서 face-corner마다 정점을
+  다시 풀어냄) — `ScanGroupMergerTests`가 `SCNScene.write(to:)`로 만든 최소 usdz
+  fixture 2개로 실제 합치기(인덱스 오프셋, 용접 안 됨 확인)까지 검증.
+- `PLYWriter.swift`/`PCDWriter.swift`(신규) — 이전엔 로더만 있고 writer가 없었음.
+  둘 다 binary 포맷만 씀(ASCII 왕복 정밀도 걱정 없음), 각각 `PLYLoader`/`PCDLoader`로
+  다시 읽는 왕복 테스트로 검증(`PLYWriterTests`/`PCDWriterTests`).
+- `ZipArchiver.zip(directories:to:)`(신규 오버로드) — 여러 스캔 폴더를 하나의 zip에
+  각자 자기 폴더 이름을 접두사로 붙여서 합친다(`scan_A/...`, `scan_B/...`). 폴더
+  하나짜리 기존 `zip(directory:to:)` 경로(VPSUploadClient 등)는 접두사 없이 그대로
+  — 회귀 없음을 `ZipArchiverTests`로 고정.
+- `ProjectGroupDetailView`에 "내보내기" 메뉴(PLY/PCD/GLB/프로젝트 전체 zip) 추가 —
+  합치기/압축을 백그라운드 큐에서 돌리고 끝나면 공유 시트. GLB는 텍스처가 필수라
+  (TextureBaker 전용 설계) 1×1 흰 텍스처를 placeholder로 채움 — 합쳐진 결과 자체는
+  이 앱의 기존 방침대로 무채색.
+- 실기 검증 안 됨(위 1단계와 같은 사유 — "이어서 스캔"이 실제로 잘 정렬되는지 확인
+  안 되면 합친 mesh도 의미가 없음). 바닥 평면 합치기는 이번 범위에서 뺌(요청의
+  핵심은 mesh였다고 판단, 필요해지면 별도로).
 
 ## 결정 (2026-09-04) — 5개 전부 완료
 1. ~~제품명(영/한) + 번들 ID~~ → **ScanMesh / 스캔메시**, `com.dcrobot.scanmesh` (2026-09-04 재확인: 위치확인/바닥 평면까지 기능이 늘었어도 여전히 유효 — 스캔이 핵심 동작이고 나머지는 그 파생 산출물이라는 판단. 표시 이름은 번들 ID와 달리 언제든 바꿀 수 있어 되돌릴 수 없는 결정이 아님)
