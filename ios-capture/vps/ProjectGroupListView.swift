@@ -1,26 +1,23 @@
 import SwiftUI
 
-/// 앱의 루트 화면. Documents 밑 scan_*/ 폴더들을 "프로젝트" 목록으로 보여주고,
-/// 새 프로젝트 만들기 -> 스캔 -> 저장 흐름의 시작점 역할을 한다.
-struct ProjectListView: View {
-    @StateObject private var store = ProjectStore()
+/// 앱의 루트 화면(이 뷰가 "프로젝트" 탭). `scan_groups.json`(ScanGroupStore)에 있는
+/// 프로젝트들을 보여준다 -- 프로젝트 하나 = 여러 스캔(scan_<name>/)을 이어서 찍어
+/// 모은 것. 실제 스캔 목록/스캔 시작은 ProjectGroupDetailView에서 한다.
+struct ProjectGroupListView: View {
+    @StateObject private var store = ScanGroupStore()
     @State private var isShowingNewProjectSheet = false
     @State private var newProjectName = ""
-    @State private var isNavigatingToScan = false
-    @State private var activeProjectName = ""
-    @State private var shareItem: ShareItem?
-    @State private var exportingProjectID: String?
     @State private var isShowingServerSettings = false
 
     var body: some View {
         NavigationStack {
             Group {
-                if store.projects.isEmpty {
+                if store.groups.isEmpty {
                     emptyState
                 } else {
                     List {
-                        ForEach(store.projects) { project in
-                            projectRow(project)
+                        ForEach(store.groups) { group in
+                            groupRow(group)
                         }
                     }
                 }
@@ -29,7 +26,7 @@ struct ProjectListView: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
-                        newProjectName = ProjectListView.defaultProjectName()
+                        newProjectName = ProjectGroupListView.defaultProjectName()
                         isShowingNewProjectSheet = true
                     } label: {
                         Image(systemName: "plus")
@@ -43,20 +40,11 @@ struct ProjectListView: View {
                     }
                 }
             }
-            .navigationDestination(isPresented: $isNavigatingToScan) {
-                ScanView(projectName: activeProjectName) {
-                    store.refresh()
-                }
-            }
             .sheet(isPresented: $isShowingNewProjectSheet) {
-                NewProjectSheet(name: $newProjectName, nameTaken: store.projectExists(named:)) {
-                    activeProjectName = newProjectName
+                NewScanGroupSheet(name: $newProjectName, nameTaken: store.groupExists(named:)) {
+                    store.createGroup(name: newProjectName)
                     isShowingNewProjectSheet = false
-                    isNavigatingToScan = true
                 }
-            }
-            .sheet(item: $shareItem) { item in
-                ShareSheet(activityItems: [item.url])
             }
             .sheet(isPresented: $isShowingServerSettings) {
                 ServerSettingsView()
@@ -70,7 +58,7 @@ struct ProjectListView: View {
             Image(systemName: "camera.metering.none")
                 .font(.system(size: 48))
                 .foregroundStyle(.secondary)
-            Text("스캔한 프로젝트가 없습니다")
+            Text("만든 프로젝트가 없습니다")
                 .font(.headline)
             Text("오른쪽 위 + 버튼으로 새 프로젝트를 시작하세요")
                 .font(.subheadline)
@@ -80,49 +68,21 @@ struct ProjectListView: View {
     }
 
     @ViewBuilder
-    private func projectRow(_ project: ScanProject) -> some View {
+    private func groupRow(_ group: ScanGroup) -> some View {
         NavigationLink {
-            ProjectDetailView(project: project)
+            ProjectGroupDetailView(group: group, store: store)
         } label: {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(project.id)
-                        .font(.headline)
-                    HStack(spacing: 8) {
-                        if let frameCount = project.frameCount {
-                            Text("\(frameCount) 프레임")
-                        }
-                        if project.hasUSDZ {
-                            Label("mesh", systemImage: "cube")
-                        }
-                    }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(group.name)
+                    .font(.headline)
+                Text("스캔 \(group.scanIDs.count)개")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                if exportingProjectID == project.id {
-                    ProgressView()
-                } else {
-                    Button {
-                        exportingProjectID = project.id
-                        store.exportZip(project) { url in
-                            exportingProjectID = nil
-                            if let url {
-                                shareItem = ShareItem(url: url)
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "square.and.arrow.up")
-                    }
-                    .buttonStyle(.borderless)
-                }
             }
         }
         .swipeActions {
             Button(role: .destructive) {
-                store.delete(project)
+                store.deleteGroup(group)
             } label: {
                 Label("삭제", systemImage: "trash")
             }
@@ -131,12 +91,12 @@ struct ProjectListView: View {
 
     static func defaultProjectName() -> String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd_HHmmss"
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
         return formatter.string(from: Date())
     }
 }
 
-private struct NewProjectSheet: View {
+private struct NewScanGroupSheet: View {
     @Binding var name: String
     let nameTaken: (String) -> Bool
     let onCreate: () -> Void
@@ -158,7 +118,7 @@ private struct NewProjectSheet: View {
                             .font(.caption)
                     }
                 } footer: {
-                    Text("실제 저장 폴더 이름은 scan_<이름>이 됩니다.")
+                    Text("만든 뒤 스캔을 여러 번 추가해서 이어붙일 수 있습니다.")
                 }
             }
             .navigationTitle("새 프로젝트")
@@ -174,19 +134,4 @@ private struct NewProjectSheet: View {
             }
         }
     }
-}
-
-struct ShareItem: Identifiable {
-    let id = UUID()
-    let url: URL
-}
-
-struct ShareSheet: UIViewControllerRepresentable {
-    let activityItems: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }

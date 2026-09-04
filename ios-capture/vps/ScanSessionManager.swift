@@ -106,7 +106,15 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         session.run(config)
     }
 
-    func startSession(name: String) {
+    /// `continuingFromWorldMapURL`: 그룹(ScanGroupStore)에 이미 스캔이 있어서 "이어서
+    /// 스캔"하는 경우, 그 이전 스캔이 저장한 `worldmap.arexperience`를 넘긴다 --
+    /// `initialWorldMap`으로 로드하면 ARKit이 같은 물리 공간을 다시 알아볼 때까지
+    /// 재국지화를 시도하고(기존 `updateGuidance`의 `.limited(.relocalizing)` 안내가
+    /// 그대로 뜬다), 성공하면 새 스캔의 포즈/mesh가 이전 스캔과 정확히 같은 world
+    /// 좌표계에 놓인다 -- 그래서 나중에 정합(registration) 계산 없이 그냥 이어붙이기만
+    /// 해도 되는 것(ScanGroupMerger 참고). 못 읽으면(파일 없음/손상) 조용히 새 좌표계로
+    /// 시작한다 -- 완전히 막는 것보다는 새로 찍게 해주는 쪽이 낫다.
+    func startSession(name: String, continuingFromWorldMapURL: URL? = nil) {
         guard !isRunning else { return }
         guard ARWorldTrackingConfiguration.supportsFrameSemantics([.sceneDepth, .smoothedSceneDepth]) else {
             statusMessage = "이 기기는 LiDAR(sceneDepth)를 지원하지 않습니다"
@@ -153,6 +161,16 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
             logger.notice("이 기기는 sceneReconstruction을 지원하지 않음 -- scan.usdz 안 나옴")
         }
         config.frameSemantics = [.sceneDepth, .smoothedSceneDepth]
+
+        if let continuingFromWorldMapURL,
+           let data = try? Data(contentsOf: continuingFromWorldMapURL),
+           let worldMap = try? NSKeyedUnarchiver.unarchivedObject(ofClass: ARWorldMap.self, from: data) {
+            config.initialWorldMap = worldMap
+            logger.debug("이전 스캔의 worldmap을 이어서 로드함 -- 같은 좌표계에서 시작")
+        } else if continuingFromWorldMapURL != nil {
+            logger.error("이전 스캔의 worldmap을 못 읽음 -- 새 좌표계로 시작(그룹 안에서 정합이 안 맞을 수 있음)")
+        }
+
         session.run(config, options: [.resetTracking, .removeExistingAnchors])
 
         isRunning = true

@@ -7,6 +7,10 @@ import SwiftUI
 /// export 성공 여부)를 확인할 시간을 준다.
 struct ScanView: View {
     let projectName: String
+    /// 프로젝트(ScanGroup)에 이미 스캔이 있어서 "이어서 스캔"하는 경우, 그 이전 스캔의
+    /// worldmap.arexperience 경로 -- nil이면 새 좌표계로 시작(그룹의 첫 스캔이거나
+    /// 프로젝트 개념 없이 단독 스캔).
+    var continuingFromWorldMapURL: URL?
     var onSaved: () -> Void = {}
 
     @StateObject private var manager = ScanSessionManager()
@@ -82,8 +86,15 @@ struct ScanView: View {
                         }
                     }
 
+                    if continuingFromWorldMapURL != nil {
+                        Text("이어서 스캔 — 이전에 찍었던 곳을 비춰서 위치를 다시 맞춰주세요")
+                            .font(.caption)
+                            .foregroundStyle(.cyan)
+                            .multilineTextAlignment(.leading)
+                    }
+
                     Button("스캔 시작") {
-                        manager.startSession(name: projectName)
+                        manager.startSession(name: projectName, continuingFromWorldMapURL: continuingFromWorldMapURL)
                     }
                     .buttonStyle(.borderedProminent)
                 }
