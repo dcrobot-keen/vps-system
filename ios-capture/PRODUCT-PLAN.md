@@ -62,6 +62,8 @@
 - [x] CI 착수 + **실제 GitHub Actions 러너에서 검증 완료**: `.github/workflows/ios.yml` + `vps.xcodeproj/xcshareddata/xcschemes/vps.xcscheme`(원래 커밋 안 돼 있던 스킴을 새로 만듦). 첫 실행은 "Scheme vps is not currently configured for the build action"로 실패 — 스킴 XML의 설명 주석에 `--`(이 세션이 습관적으로 쓰는 구분자)가 들어있어 Xcode의 스킴 파서가 파일 전체를 로드 실패로 처리한 것이 원인이었다(XML 1.0 스펙상 주석 본문에 `--`는 금지). 주석을 지우자 `xcodebuild build`가 실제 Xcode 26.6에서 통과(초록불) — 이 세션 최초로 진짜 컴파일 성공을 확인한 사례. `xcodebuild test`는 `vpsTests` 타깃이 없어 예상대로 "Scheme vps is not currently configured for the test action"로 실패하지만 `continue-on-error`라 전체는 통과 — **타깃 생성 후 이 continue-on-error를 지워서 필수 게이트로 승격할 것**
 - [ ] TestFlight 외부 테스터
 
+**실제 CI 검증(2026-09-04):** 위 세 항목(String Catalog, 캡처 루프 오프로딩, OSLog) 커밋 후 GitHub Actions에서 `xcodebuild build` 그대로 통과(초록불, 52초) — `os.Logger` + `privacy: .public`, `NSLock` 백프레셔, `Localizable.xcstrings`, `LocalizedStringKey` 타입 명시까지 전부 실제 Xcode 26.6에서 컴파일 확인됨.
+
 ### D. 출시 후
 - [ ] iCloud/Files 동기화, 프로젝트 이름 변경/정리 UI
 - [ ] 고급 모드 확장(정합 파일 자동 수신 등)
