@@ -42,13 +42,11 @@ jobs:
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
 
-      # vpsTests 타깃은 아직 Xcode에서 사람이 직접 추가해야 한다(pbxproj의 타깃
-      # 배선을 직접 수작업으로 편집하는 건 위험해서 코드만 준비해뒀다 --
-      # PRODUCT-PLAN.md 참고). 그 전까지 이 스텝은 항상 실패하므로 빌드 자체를
-      # 빨갛게 만들지 않게 continue-on-error로 둔다. 타깃이 생기면
-      # continue-on-error를 지우고 정식 필수 게이트로 승격할 것.
-      - name: Test (vpsTests -- soft-fail until the Xcode test target exists)
-        continue-on-error: true
+      # 2026-09-04: 테스트 타깃이 생겼다(Xcode에서 사람이 직접 추가, 이름은
+      # vpsTests와의 폴더명 충돌 때문에 ScanMeshTests가 됨 -- 기능상 무관).
+      # `vps` 스킴의 TestAction에 이미 배선돼 있어 `-scheme vps`만으로 돈다.
+      # 로컬 시뮬레이터에서 10개 전부 통과 확인 후 필수 게이트로 승격.
+      - name: Test (ScanMeshTests)
         run: |
           set -o pipefail
           xcodebuild test \
