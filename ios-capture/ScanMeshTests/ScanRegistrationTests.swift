@@ -54,7 +54,7 @@ final class ScanRegistrationTests: XCTestCase {
     func testAlignMultistartHandlesLargerInitialRotationError() {
         let target = roomWalls()
         let truth = ScanAlignment(offsetX: -2.0, offsetZ: 1.5, yawRadians: -1.1)
-        let source: [SIMD2<Float>] = target.filter { $0.z <= 3 }.map { q in
+        let source: [SIMD2<Float>] = target.filter { $0.y <= 3 }.map { q in
             let p = truth.inverseXZ(x: q.x, z: q.y)
             return SIMD2(p.x, p.z)
         }
