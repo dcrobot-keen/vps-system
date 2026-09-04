@@ -1,10 +1,10 @@
 import Foundation
 import simd
 
-/// 프로젝트(ScanGroup) 안 스캔들의 `scan.usdz`를 하나의 mesh로 합친다. 그룹의 스캔들은
-/// "이어서 스캔"(ScanSessionManager.startSession의 continuingFromWorldMapURL)으로
-/// 찍혀서 이미 같은 world 좌표계를 공유하므로, 정합(registration) 계산 없이 각
-/// scan.usdz의 vertex/index 버퍼를 그대로 이어붙이기만 하면 된다 -- 이어붙인 뒤
+/// 프로젝트(ScanGroup) 안 스캔들의 `scan.usdz`를 하나의 mesh로 합친다. 스캔들은 각자
+/// 따로 찍혀서(세션마다 다른 ARKit 원점) 좌표계가 다르므로, 사용자가 정렬 화면
+/// (ScanAlignmentView)에서 맞춘 평면 변환(`ScanAlignment`)을 스캔마다 적용하고 수직은
+/// 바닥 높이로 자동으로 맞춘 뒤 vertex/index 버퍼를 이어붙인다 -- 이어붙인 뒤
 /// `MeshUnifier.weld`로 스캔 경계에서 위상적으로 안 이어진 근접 중복 정점만
 /// 정리한다(TextureBaker가 anchor 경계에 쓰는 것과 같은 처리).
 enum ScanGroupMerger {
@@ -46,19 +46,47 @@ enum ScanGroupMerger {
         }
     }
 
-    /// `scanFolderURLs`: 그룹의 각 scan_<name>/ 폴더 경로(캡처 순서 무관 -- 위치는
-    /// 이미 world 좌표계에 저장돼 있어서 합치는 순서가 결과에 영향 없음). scan.usdz가
-    /// 없는 스캔(너무 짧게 찍었거나 sceneReconstruction 미지원 기기)은 조용히
-    /// 건너뛴다 -- 하나라도 있으면 합쳐서 반환한다.
+    struct ScanInput {
+        let folderURL: URL
+        /// 이 스캔을 기준 스캔(첫 번째) 좌표계로 옮기는 평면 변환. 첫 스캔은 identity.
+        let alignment: ScanAlignment
+    }
+
+    /// 정렬 변환 없이(전부 identity) 합친다 -- 테스트/단순 호출용.
     static func mergeMesh(scanFolderURLs: [URL], weldEpsilon: Float = 0.003) throws -> MergedMesh {
+        try mergeMesh(scans: scanFolderURLs.map { ScanInput(folderURL: $0, alignment: .identity) }, weldEpsilon: weldEpsilon)
+    }
+
+    /// `scans`: 그룹의 각 scan_<name>/ 폴더 + 사용자가 정렬 화면에서 맞춘 변환. 첫
+    /// 스캔이 기준이고, 각 스캔의 수직(Y) 오프셋은 여기서 자동으로 채운다 -- 두 스캔
+    /// 다 floorplan.json에 바닥 높이가 있으면 그 차이만큼 올리거나 내려서 바닥면을
+    /// 맞춘다(ARKit 원점은 세션 시작 위치라 세션마다 높이가 제각각이지만, 바닥은 같은
+    /// 바닥이니까). scan.usdz가 없는 스캔(너무 짧게 찍었거나 sceneReconstruction
+    /// 미지원 기기)은 조용히 건너뛴다 -- 하나라도 있으면 합쳐서 반환한다.
+    static func mergeMesh(scans: [ScanInput], weldEpsilon: Float = 0.003) throws -> MergedMesh {
         var positions: [SIMD3<Float>] = []
         var indices: [UInt32] = []
 
-        for scanURL in scanFolderURLs {
-            let usdzURL = scanURL.appendingPathComponent("scan.usdz")
+        let referenceFloorY = scans.first.flatMap {
+            FloorPlanRenderer.PersistedMeta.load(from: $0.folderURL)?.floorHeightMin
+        }
+
+        for scan in scans {
+            let usdzURL = scan.folderURL.appendingPathComponent("scan.usdz")
             guard let raw = try? MeshUnifier.load(usdzURL: usdzURL) else { continue }
+
+            var yOffset: Float = 0
+            if let referenceFloorY,
+               let ownFloorY = FloorPlanRenderer.PersistedMeta.load(from: scan.folderURL)?.floorHeightMin {
+                yOffset = referenceFloorY - ownFloorY
+            }
+
             let vertexOffset = UInt32(positions.count)
-            positions.append(contentsOf: raw.positions)
+            positions.append(contentsOf: raw.positions.map { p in
+                var q = scan.alignment.apply(p)
+                q.y += yOffset
+                return q
+            })
             indices.append(contentsOf: raw.indices.map { $0 + vertexOffset })
         }
         guard !positions.isEmpty, !indices.isEmpty else { throw MergeError.noScansWithMesh }

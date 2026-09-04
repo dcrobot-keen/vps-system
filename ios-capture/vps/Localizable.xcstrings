@@ -522,6 +522,136 @@
           }
         }
       }
+    },
+    "오른쪽 아래 + 버튼으로 새 프로젝트를 시작하세요": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tap the + button in the bottom right to start a new project"
+          }
+        }
+      }
+    },
+    "만든 뒤 스캔을 여러 개 추가하고, 정렬해서 하나로 합칠 수 있습니다.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "After creating it, add several scans, then align and merge them into one."
+          }
+        }
+      }
+    },
+    "오른쪽 아래 버튼으로 첫 스캔을 시작하세요": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tap the button in the bottom right to start your first scan"
+          }
+        }
+      }
+    },
+    "스캔 정렬": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Align Scans"
+          }
+        }
+      }
+    },
+    "프로젝트에서 제거": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove from Project"
+          }
+        }
+      }
+    },
+    "기준": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reference"
+          }
+        }
+      }
+    },
+    "바닥 평면": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Floor plan"
+          }
+        }
+      }
+    },
+    "스캔이 2개 이상이면 ⋯ 메뉴의 \"스캔 정렬\"로 위치를 맞춘 뒤 내보내세요. 첫 번째 스캔이 기준입니다.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "With two or more scans, use \"Align Scans\" in the ⋯ menu to line them up before exporting. The first scan is the reference."
+          }
+        }
+      }
+    },
+    "바닥 평면이 있는 스캔이 2개 이상이어야 정렬할 수 있습니다": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alignment needs at least two scans with a floor plan"
+          }
+        }
+      }
+    },
+    "맞출 스캔": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scan to move"
+          }
+        }
+      }
+    },
+    "초기화": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reset"
+          }
+        }
+      }
+    },
+    "저장": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save"
+          }
+        }
+      }
+    },
+    "점선이 기준 스캔입니다. 고른 스캔을 한 손가락으로 끌어 옮기고, 두 손가락으로 돌려서 겹치는 부분을 맞추세요.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The dashed outline is the reference scan. Drag the selected scan with one finger to move it and rotate with two fingers until the overlapping areas line up."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
