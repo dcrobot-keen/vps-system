@@ -1,5 +1,8 @@
 import CoreImage
 import Vision
+import os
+
+private let logger = Logger(subsystem: "com.dcrobot.scanmesh", category: "FaceRedactor")
 
 /// 캡처한 RGB 프레임에서 사람 얼굴을 감지해 모자이크 처리한다. 공용 공간을
 /// 스캔하다 보면 사람이 찍히는 걸 완전히 피하기 어려운데, 그 사진들이 VPS DB
@@ -32,14 +35,14 @@ enum FaceRedactor {
                     observations.append(contentsOf: found)
                 }
             } catch {
-                print("[deface] Vision 얼굴 검출 실패(orientation=\(orientation)): \(error)")
+                logger.error("Vision 얼굴 검출 실패(orientation=\(orientation.rawValue)) -- \(error.localizedDescription, privacy: .public)")
             }
         }
 
         guard !observations.isEmpty else {
             return ciImage
         }
-        print("[deface] 얼굴 \(observations.count)개 검출, 모자이크 적용")
+        logger.debug("얼굴 \(observations.count)개 검출, 모자이크 적용")
 
         var result = ciImage
         let imageExtent = ciImage.extent

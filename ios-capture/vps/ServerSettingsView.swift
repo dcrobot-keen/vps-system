@@ -24,8 +24,10 @@ struct ServerSettingsView: View {
                     } header: {
                         Text("VPS 서버 주소")
                     } footer: {
-                        Text("같은 Tailscale 네트워크 또는 같은 Wi-Fi에 있는 서버의 주소를 입력하세요. "
-                            + "예: http://100.64.1.2:8000")
+                        // 한 리터럴로 합쳤다 -- 두 문자열을 +로 이어붙이면 String으로
+                        // 타입이 굳어서 Text(_:LocalizedStringKey)가 아니라
+                        // Text(_:String)(그대로 표시, 지역화 안 됨) 쪽으로 빠진다.
+                        Text("같은 Tailscale 네트워크 또는 같은 Wi-Fi에 있는 서버의 주소를 입력하세요. 예: http://100.64.1.2:8000")
                     }
                 }
             }

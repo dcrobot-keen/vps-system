@@ -48,6 +48,18 @@ struct ImportedFilesView: View {
                     store.importFile(from: url)
                 }
             }
+            .alert(
+                "가져오기 실패",
+                isPresented: Binding(
+                    get: { store.importErrorMessage != nil },
+                    set: { if !$0 { store.importErrorMessage = nil } }
+                ),
+                presenting: store.importErrorMessage
+            ) { _ in
+                Button("확인") { store.importErrorMessage = nil }
+            } message: { message in
+                Text(message)
+            }
         }
     }
 

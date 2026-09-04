@@ -78,9 +78,12 @@ struct ScanView: View {
     /// VPS DB 품질에 도움 되는 것으로 확인된 스캔 습관 — 실시간으로 감지하기 어려운
     /// 것들(질감 있는 표면 위주, 여러 각도에서 훑기)만 시작 전에 짧게 안내한다.
     /// 감지 가능한 것들(트래킹, 거리, 구역 길이)은 스캔 중 `guidanceMessage`로 대신한다.
-    private static let preScanTips =
-        "천천히, 흔들지 않게 움직여주세요. 흰 벽보다는 가구·표지판처럼 특징이" +
-        " 뚜렷한 곳 위주로, 같은 곳도 2~3개 각도에서 훑어주면 좋아요."
+    // 한 리터럴로 합치고 타입을 LocalizedStringKey로 명시했다 -- 원래는 두 문자열을
+    // +로 이어붙여서 String으로 타입이 굳었었는데(ServerSettingsView에서도 같은
+    // 문제를 발견해 고침), String이면 애초에 static let 자체가 지역화 대상이 아니라
+    // Text(Self.preScanTips)가 Text(_:String)(그대로 표시) 쪽으로 빠진다.
+    private static let preScanTips: LocalizedStringKey =
+        "천천히, 흔들지 않게 움직여주세요. 흰 벽보다는 가구·표지판처럼 특징이 뚜렷한 곳 위주로, 같은 곳도 2~3개 각도에서 훑어주면 좋아요."
 }
 
 /// 실시간 mesh 프리뷰(cyan 와이어프레임)를 겹쳐 그리기 위해 ARSCNViewDelegate를
