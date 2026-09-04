@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 
 /// 여러 스캔(`scan_<name>/`)을 하나의 "프로젝트"로 묶는다. 기존 스캔 폴더는 전혀
