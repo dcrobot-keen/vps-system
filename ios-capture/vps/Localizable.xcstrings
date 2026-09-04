@@ -301,6 +301,16 @@
         }
       }
     },
+    "저장 공간이 부족할 수 있어요" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Storage space may be low"
+          }
+        }
+      }
+    },
     "정지 & 저장" : {
       "localizations" : {
         "en" : {

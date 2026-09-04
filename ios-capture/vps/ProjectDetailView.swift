@@ -52,6 +52,8 @@ struct ProjectDetailView: View {
     @State private var isShowingFloorPlan = false
     @State private var floorPlanShareItem: ShareItem?
 
+    @State private var projectSizeText: String?
+
     /// 서버 업로드는 로봇 스택 연동용이라 설정의 "고급 모드"가 켜져 있을 때만
     /// 노출한다 -- 일반 사용자에겐 이 앱이 서버 없이 완결된 스캐너여야 한다.
     @AppStorage(ServerSettingsStore.advancedModeKey) private var isAdvancedModeEnabled = false
@@ -130,6 +132,7 @@ struct ProjectDetailView: View {
         .onAppear {
             loadRGBList()
             hasTexturedGLB = FileManager.default.fileExists(atPath: texturedGLBURL.path)
+            loadProjectSize()
         }
         .fullScreenCover(isPresented: $isShowingMeshViewer) {
             NavigationStack {
@@ -447,9 +450,27 @@ struct ProjectDetailView: View {
                 Text(startTime.formatted(date: .abbreviated, time: .shortened))
             }
             Text(project.hasUSDZ ? "scan.usdz 있음" : "scan.usdz 없음")
+            if let projectSizeText {
+                // 보간 있는 리터럴이라 String Catalog 추출 대상이지만, 정확한 %@ 키
+                // 형식은 맥 빌드 시 Xcode 자동 추출기가 채우도록 둔다(기존 방침).
+                Text("이 프로젝트 용량: \(projectSizeText)")
+            }
         }
         .font(.subheadline)
         .foregroundStyle(.secondary)
+    }
+
+    /// 파일이 수백~수천 개일 수 있어(rgb/depth 프레임마다 2~3개) 백그라운드 큐에서
+    /// 잰다 -- 저장 공간 표시/경고 기능의 "프로젝트 용량 표시" 부분(PRODUCT-PLAN.md).
+    private func loadProjectSize() {
+        let url = project.url
+        DispatchQueue.global(qos: .utility).async {
+            let bytes = DeviceStorage.directorySizeBytes(at: url)
+            let text = DeviceStorage.formatted(bytes)
+            DispatchQueue.main.async {
+                projectSizeText = text
+            }
+        }
     }
 
     private func loadRGBList() {

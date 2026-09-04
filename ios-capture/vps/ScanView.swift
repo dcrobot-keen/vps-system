@@ -11,12 +11,16 @@ struct ScanView: View {
 
     @StateObject private var manager = ScanSessionManager()
     @Environment(\.dismiss) private var dismiss
+    @State private var availableStorageBytes: Int64?
 
     var body: some View {
         ZStack(alignment: .bottom) {
             ARPreview(session: manager.session, delegate: manager)
                 .ignoresSafeArea()
-                .onAppear { manager.startPreview() }
+                .onAppear {
+                    manager.startPreview()
+                    availableStorageBytes = DeviceStorage.availableBytes()
+                }
 
             if let guidance = manager.guidanceMessage {
                 VStack {
@@ -59,6 +63,25 @@ struct ScanView: View {
                         .foregroundStyle(.white.opacity(0.85))
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
+
+                    if let availableStorageBytes {
+                        // 보간이 있는 리터럴이라 String Catalog 추출 대상이지만, 정확한
+                        // %lld 키 형식을 손으로 재현하는 대신 맥에서 다음 빌드할 때
+                        // SWIFT_EMIT_LOC_STRINGS가 자동으로 채워주게 둔다(이 세션의
+                        // 기존 방침, Localizable.xcstrings 주석 참고).
+                        Text("저장 공간: \(DeviceStorage.formatted(availableStorageBytes)) 사용 가능")
+                            .font(.caption2)
+                            .foregroundStyle(
+                                availableStorageBytes < DeviceStorage.lowStorageWarningBytes
+                                    ? .orange : .white.opacity(0.6)
+                            )
+                        if availableStorageBytes < DeviceStorage.lowStorageWarningBytes {
+                            Text("저장 공간이 부족할 수 있어요")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+
                     Button("스캔 시작") {
                         manager.startSession(name: projectName)
                     }

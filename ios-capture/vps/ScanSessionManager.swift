@@ -71,6 +71,12 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
     private static let textureCoverageStationaryRadiusMeters: Float = 0.4
     private static let wrapUpSuggestionFrameCount = 300
 
+    /// 저장 공간 확인은 디스크 I/O라 매 프레임(최대 60Hz) 하지 않고 이 간격(초)마다만
+    /// 다시 확인한다 -- 그 사이엔 마지막으로 확인한 값을 그대로 쓴다.
+    private static let storageCheckIntervalSeconds: TimeInterval = 5
+    private var lastStorageCheckTimestamp: TimeInterval = 0
+    private var isStorageCritical = false
+
     private let ciContext = CIContext()
     private let logger = Logger(subsystem: "com.dcrobot.scanmesh", category: "ScanSession")
 
@@ -114,6 +120,8 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         lastCameraPosition = nil
         recentCameraPositions = []
         scanPathXZ = []
+        lastStorageCheckTimestamp = 0
+        isStorageCritical = false
         sessionStartTime = Date()
 
         let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -371,17 +379,33 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
 
     // MARK: - 스캔 가이드
 
-    /// 트래킹 상태 -> 거리 -> 텍스처 커버리지 -> 구역 분할 제안 순으로 확인해서
-    /// 지금 제일 급한 안내 하나만 고른다(트래킹이 안 좋으면 프레임 자체가 안 찍히니
-    /// 제일 급함). 텍스처 커버리지를 구역 분할 제안보다 먼저 보는 이유: 제자리에서만
-    /// 찍어서 프레임 수만 채운 상태로 "이제 충분해요"를 먼저 보여주면 텍스처 품질
-    /// 문제를 놓치고 그냥 저장하게 된다 — 움직이라는 안내가 더 급하다.
+    /// 발열 -> 저장 공간 -> 트래킹 상태 -> 거리 -> 텍스처 커버리지 -> 구역 분할
+    /// 제안 순으로 확인해서 지금 제일 급한 안내 하나만 고른다(트래킹이 안 좋으면
+    /// 프레임 자체가 안 찍히니 제일 급함). 텍스처 커버리지를 구역 분할 제안보다
+    /// 먼저 보는 이유: 제자리에서만 찍어서 프레임 수만 채운 상태로 "이제 충분해요"를
+    /// 먼저 보여주면 텍스처 품질 문제를 놓치고 그냥 저장하게 된다 — 움직이라는 안내가
+    /// 더 급하다.
     private func updateGuidance(frame: ARFrame) {
         // 발열이 트래킹/거리 안내보다 급하다 -- 계속 스캔하면 iOS가 스스로 성능을
         // 낮추거나(프레임 드롭 심해짐) 최악의 경우 앱이 강제 종료될 수 있다.
         if let thermalMessage = Self.thermalGuidanceMessage(for: ProcessInfo.processInfo.thermalState) {
             guard thermalMessage != guidanceMessage else { return }
             DispatchQueue.main.async { [weak self] in self?.guidanceMessage = thermalMessage }
+            return
+        }
+
+        // 저장 공간도 발열 다음으로 급하다 -- 이후 프레임 저장이 통째로 실패하기
+        // 시작할 수 있다(recordSaveFailure는 이미 실패가 난 뒤에야 반응하므로,
+        // 미리 알려주는 게 낫다). 디스크 여유 확인은 I/O라 storageCheckIntervalSeconds
+        // 마다만 다시 하고, 그 사이엔 마지막 값을 그대로 쓴다.
+        if frame.timestamp - lastStorageCheckTimestamp > Self.storageCheckIntervalSeconds {
+            lastStorageCheckTimestamp = frame.timestamp
+            isStorageCritical = (DeviceStorage.availableBytes() ?? .max) < DeviceStorage.criticalStorageBytes
+        }
+        if isStorageCritical {
+            let message = "저장 공간이 거의 다 찼어요 — 지금 저장하고 마무리해주세요"
+            guard message != guidanceMessage else { return }
+            DispatchQueue.main.async { [weak self] in self?.guidanceMessage = message }
             return
         }
 
