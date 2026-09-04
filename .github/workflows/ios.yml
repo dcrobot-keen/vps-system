@@ -53,12 +53,32 @@ jobs:
       # "iPhone 16"이 없고 iPhone 17/17 Pro/17e/Air만 있었음), 특정 모델명을
       # 박아두면 또 같은 이유로 깨진다. 그래서 이름을 아예 안 박고, 그 시점에
       # 실제로 있는 iPhone 시뮬레이터 하나를 매번 동적으로 골라 쓴다.
+      # 첫 시도(단순 head -n1)는 iOS 26.4.1짜리 iPhone을 골랐다가 "Cannot test
+      # target ... doesn't match ... iOS Simulator 26.5 deployment target"으로
+      # 또 깨졌다 -- 타깃의 배포 타깃(그때는 실수로 26.5)보다 낮은 런타임을 뽑은
+      # 것. 이제 타깃 배포 타깃은 앱과 맞춰 17.0으로 내렸지만, 그거와 별개로
+      # "구버전 런타임을 뽑을 위험" 자체를 없애기 위해 OS 버전 내림차순 정렬 후
+      # 제일 최신 걸 고른다(Any/최신 iOS를 요구하는 타깃이 나중에 생겨도 안전).
       - name: Pick an available iPhone simulator
         id: sim
         run: |
+          # 러너의 시뮬레이터 목록에서 실제로 있는 iOS 버전 중 가장 최신 하나를
+          # 골라 그 안의 iPhone 하나를 쓴다. 런타임 키는
+          # "com.apple.CoreSimulator.SimRuntime.iOS-26-5"처럼 점이 아니라
+          # 하이픈으로 버전을 구분해서 오는데, jq에서 숫자로 미리 변환해두면
+          # sort -n이 그대로 먹는다.
           udid=$(xcrun simctl list devices available -j \
-            | jq -r '.devices | to_entries[] | select(.key | test("iOS")) | .value[] | select(.name | test("iPhone")) | .udid' \
-            | head -n1)
+            | jq -r '
+              .devices | to_entries[]
+              | select(.key | test("^com\\.apple\\.CoreSimulator\\.SimRuntime\\.iOS-"))
+              | (.key | sub("^com\\.apple\\.CoreSimulator\\.SimRuntime\\.iOS-";"") | split("-") | map(tonumber)) as $v
+              | .value[]
+              | select(.name | test("iPhone"))
+              | "\($v[0])\t\($v[1])\t\(if ($v[2] // null) then $v[2] else 0 end)\t\(.udid)"
+            ' \
+            | sort -t $'\t' -k1,1n -k2,2n -k3,3n \
+            | tail -n1 \
+            | cut -f4)
           if [ -z "$udid" ]; then
             echo "no available iPhone simulator found" >&2
             xcrun simctl list devices available
