@@ -45,7 +45,7 @@
 - [ ] ~~심사 노트에 고급 모드 용도 명시~~ — **TestFlight 내부 테스트는 Apple 심사 자체가 없음(위 배포 방식 결정 참고). 공개 출시로 전환할 때만 필요.**
 - [x] **제품명/브랜드/번들 ID — 결정(2026-09-04): "ScanMesh" / "스캔메시", `com.dcrobot.scanmesh`** — App Store 사전 검색으로 동일/유사 이름 없음을 확인하고 선택. `INFOPLIST_KEY_CFBundleDisplayName`(홈 화면 아이콘 이름), `PRODUCT_BUNDLE_IDENTIFIER`, `ProjectListView`의 네비게이션 타이틀("스캔메시")까지 반영. Xcode 내부 타깃/프로덕트 이름 자체는 여전히 "vps"(cosmetic, 사용자에게 안 보임 — 바꾸려면 Xcode의 Rename 리팩터로 해야 안전, 필수 아님)
 - [x] 개발자 계정: **개인**으로 결정(2026-09-04) — 현재 팀 `GW4C35M572` 그대로 사용
-- [ ] 앱 아이콘, 런치 스크린(현재 자동 생성) — TestFlight에도 아이콘은 그대로 보이므로 여전히 필요
+- [x] **앱 아이콘 + 런치 스크린 확인 완료(2026-09-04)** — `Assets.xcassets/AppIcon.appiconset`에 라이트/다크/틴트 3개 변형이 이미 있고(네이비 배경 + 청록 스캔 프레임 코너 브래킷 + 흰 점 클러스터로 "스캔→포인트클라우드/메시" 컨셉), 1024×1024·8비트·알파 채널 없음(App Store Connect 검증 통과 조건)까지 확인. `project.pbxproj`의 `ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon`도 Debug/Release 둘 다 정상 연결. 런치 스크린은 `INFOPLIST_KEY_UILaunchScreen_Generation = YES`(스토리보드 없이 Apple 표준 빈 화면 자동 생성) — SwiftUI 전용 앱의 정식 방식이라 추가 작업 불필요.
 - [ ] ~~스크린샷(iPhone 6.9"/6.5", iPad 13")~~ — 공개 앱스토어 상품 페이지 전용 요건이라 TestFlight 내부 테스트만으로는 불필요(공개 출시 결정 시 재검토)
 - [x] **개인정보 처리방침 — GitHub Pages로 결정(2026-09-04)**: `docs/privacy/index.html`(한/영 병기) 작성 + `vps-system` 저장소에 Pages 활성화. URL: `https://dcrobot-keen.github.io/vps-system/privacy/`. **문의 이메일 주소가 아직 placeholder — 공개 출시 전 실제 주소로 교체 필요(TestFlight 내부 테스트만으로는 급하지 않음). 이 저장소(`dcrobot-keen`)가 실명과 연결 가능한지도 같이 점검할 것(회사에 안 알리고 싶다는 목적과 관련)**
 - [ ] ~~App Privacy 라벨(App Store Connect)~~ — 공개 상품 페이지 요건. TestFlight 내부 테스트에 필요한지는 미확인(Apple이 최근 TestFlight에도 일부 요구하는 경우가 있다고 알려져 있어 실제 업로드 시점에 App Store Connect가 요구하면 그때 채움)
