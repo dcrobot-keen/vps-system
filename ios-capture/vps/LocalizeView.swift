@@ -5,7 +5,8 @@ import UniformTypeIdentifiers
 /// "서버 없이 지금 어디쯤인지 확인"하는 화면. 저장된 ARWorldMap으로 재국지화를
 /// 시도하고, 성공하면 이 스캔 좌표계(scan_basemap) 기준 위치를 상단 2D 뷰에
 /// 점+화살표로 보여준다. registration_transform.json이 이 스캔 폴더에 있으면(직접
-/// 넣거나 "정합 파일 가져오기"로 넣으면) map(로봇 SLAM) 좌표로도 함께 보여준다.
+/// 넣거나 "정합 파일 가져오기"로 넣으면) map(로봇 SLAM) 좌표로도 함께 보여준다 --
+/// 이 가져오기는 로봇 파이프라인 산출물이라 고급 모드가 켜져 있을 때만 노출된다.
 struct LocalizeView: View {
     let project: ScanProject
 
@@ -13,6 +14,12 @@ struct LocalizeView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var isImportingCalibration = false
     @State private var importErrorMessage: String?
+
+    /// registration_transform.json은 scan-to-map-studio(로봇 파이프라인) 산출물이라
+    /// 일반 사용자에겐 의미가 없다 -- "정합 파일 가져오기" 버튼 자체를 고급 모드
+    /// 뒤로 숨긴다. 위치 확인 기능(재국지화, 스캔 기준 좌표 표시)은 고급 모드와
+    /// 무관하게 항상 쓸 수 있다.
+    @AppStorage(ServerSettingsStore.advancedModeKey) private var isAdvancedModeEnabled = false
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -32,11 +39,13 @@ struct LocalizeView: View {
         .navigationTitle("위치 확인")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    isImportingCalibration = true
-                } label: {
-                    Image(systemName: "square.and.arrow.down")
+            if isAdvancedModeEnabled {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        isImportingCalibration = true
+                    } label: {
+                        Image(systemName: "square.and.arrow.down")
+                    }
                 }
             }
         }

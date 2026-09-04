@@ -32,7 +32,7 @@
 - [x] `NSLocalNetworkUsageDescription` (고급 모드 LAN 업로드용)
 - [x] Files 앱 노출: `UIFileSharingEnabled` + `LSSupportsOpeningDocumentsInPlace`
 - [x] 서버 연동을 "고급 모드" 뒤로 (기본 꺼짐, `ServerSettingsStore.isAdvancedModeEnabled`)
-- [ ] `LocalizeView`의 "정합 파일 가져오기"(툴바 다운로드 아이콘)도 고급 모드 게이트 뒤로 — 파이프라인(scan-to-map-studio) 산출물이라 일반 사용자에겐 의미 없음
+- [x] `LocalizeView`의 "정합 파일 가져오기"(툴바 다운로드 아이콘)도 고급 모드 게이트 뒤로 — 파이프라인(scan-to-map-studio) 산출물이라 일반 사용자에겐 의미 없음
 - [ ] 심사 노트에 고급 모드 용도 명시(App Review 2.3.1 "숨겨진 기능" 오해 방지) + 서버 없이 전체 플로우 데모 가능함을 명시
 - [ ] **제품명/브랜드/번들 ID** — 현재 `com.dcrobot.keen.vps`, 타이틀 "dc-vps 스캔". **사용자 결정 필요**
 - [ ] 개발자 계정: 개인(팀 `GW4C35M572`) vs 회사 Organization — **사용자 결정 필요**
@@ -49,8 +49,9 @@
 - [ ] 발열/프레임 드롭: 긴 스캔(5분+)에서 `thermalState` 관찰
 
 ### C. 엔지니어링 품질
-- [ ] **스캔 포맷 회귀 게이트(필수, 파이프라인 계약 보호)** — 앱이 쓰는 `manifest.json`/`poses.jsonl` 레코드가 `vps-system/scan-format/*.schema.json`과 일치하는지 XCTest로 고정(키 집합/타입), CI(macOS)에서는 테스트가 만든 fixture 스캔에 `conformance_check.py`를 돌려 이중 확인. 소비자 기능 리팩터가 하류 5개 프로젝트를 조용히 깨는 걸 막는 유일한 장치
-- [x] 첫 XCTest (`vpsTests/RegistrationTransformTests.swift`) — **Xcode에서 Unit Testing Bundle 타깃 `vpsTests` 추가 필요**(폴더 지정만 하면 자동 포함)
+- [x] **스캔 포맷 회귀 게이트, XCTest 부분** — `manifest.json`/`poses.jsonl`을 만드는 로직을 순수 함수로 뽑아낸 `ScanRecordBuilder.swift`(ARFrame 의존 제거, `ScanSessionManager`가 그대로 씀)를 만들고, `vpsTests/ScanFormatConformanceTests.swift`가 `vps-system/scan-format/*.schema.json`(정본)을 직접 읽어 그 출력과 대조(필수 키·타입, `tracking_state` enum까지). 대조기는 `MiniSchemaValidator.swift`(이 두 스키마에 필요한 만큼만 지원하는 좁은 서브셋)
+  - [ ] CI 부분(미배선): 이 테스트가 만드는 fixture 스캔 폴더에 `conformance_check.py`를 추가로 돌려 Python 소비자 쪽에서도 이중 확인 — CI 구축 시 같이
+- [x] 첫 XCTest들 (`vpsTests/RegistrationTransformTests.swift`, `MiniSchemaValidator.swift`, `ScanFormatConformanceTests.swift`) — **Xcode에서 Unit Testing Bundle 타깃 `vpsTests` 추가 필요**(폴더 지정만 하면 셋 다 자동 포함)
 - [ ] 캡처 루프 오프로딩: JPEG 인코딩 + 얼굴 검출을 ARSession 델리게이트 스레드 밖 큐로, 백프레셔(프레임 드롭) + `ProcessInfo.thermalState`
 - [ ] 방향 추적: 가로/세로 모두 허용 중 → 실제 기기 방향을 Vision에 정확히 전달(지금은 두 방향 시도로 땜질)
 - [ ] `try?`로 삼키는 에러를 사용자 표시 + OSLog로

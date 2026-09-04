@@ -417,22 +417,16 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         let intr = frame.camera.intrinsics // 3x3, raw(landscape) 기준
         let resolution = frame.camera.imageResolution
 
-        let record: [String: Any] = [
-            "frame_id": index,
-            "timestamp": frame.timestamp,
-            "rgb_path": "rgb/frame_\(paddedIndex(index)).jpg",
-            "depth_path": "depth/frame_\(paddedIndex(index)).depth",
-            "camera_transform": matrixToArray(t),
-            "intrinsics": [
-                "fx": intr[0, 0],
-                "fy": intr[1, 1],
-                "cx": intr[2, 0],
-                "cy": intr[2, 1],
-                "width": Int(resolution.width),
-                "height": Int(resolution.height),
-            ],
-            "tracking_state": trackingStateString(frame.camera.trackingState),
-        ]
+        let record = ScanRecordBuilder.buildPoseRecord(
+            frameId: index,
+            timestamp: frame.timestamp,
+            rgbPath: "rgb/frame_\(paddedIndex(index)).jpg",
+            depthPath: "depth/frame_\(paddedIndex(index)).depth",
+            cameraTransform: matrixToArray(t),
+            intrinsics: (fx: intr[0, 0], fy: intr[1, 1], cx: intr[2, 0], cy: intr[2, 1],
+                         width: Int(resolution.width), height: Int(resolution.height)),
+            trackingState: trackingStateString(frame.camera.trackingState)
+        )
 
         guard let json = try? JSONSerialization.data(withJSONObject: record) else { return }
         posesFile.write(json)
@@ -443,16 +437,16 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
 
     private func writeManifest() {
         guard let start = sessionStartTime, let outputDir = outputDir else { return }
-        let manifest: [String: Any] = [
-            "session_name": outputDir.lastPathComponent,
-            "device_model": deviceModelIdentifier(),
-            "system_version": UIDevice.current.systemVersion,
-            "start_time": start.timeIntervalSince1970,
-            "end_time": Date().timeIntervalSince1970,
-            "frame_count": frameIndex,
-            "capture_interval_seconds": captureIntervalSeconds,
-            "capture_min_distance_meters": captureMinDistanceMeters,
-        ]
+        let manifest = ScanRecordBuilder.buildManifest(
+            sessionName: outputDir.lastPathComponent,
+            deviceModel: deviceModelIdentifier(),
+            systemVersion: UIDevice.current.systemVersion,
+            startTime: start.timeIntervalSince1970,
+            endTime: Date().timeIntervalSince1970,
+            frameCount: frameIndex,
+            captureIntervalSeconds: captureIntervalSeconds,
+            captureMinDistanceMeters: captureMinDistanceMeters
+        )
         guard let data = try? JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted]) else { return }
         try? data.write(to: outputDir.appendingPathComponent("manifest.json"))
     }
