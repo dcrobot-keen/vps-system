@@ -4,6 +4,7 @@ import CoreImage
 import Foundation
 import SceneKit
 import UIKit
+import os
 
 /// RGB + LiDAR depth + confidence + ARKit pose(6DoF)를 프레임 단위로 동기화해서
 /// scan_<name>/ 폴더에 저장한다. 좌표계는 raw(landscape) 방향을 그대로 유지하고
@@ -65,6 +66,21 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
     private static let wrapUpSuggestionFrameCount = 300
 
     private let ciContext = CIContext()
+    private let logger = Logger(subsystem: "com.dcrobot.scanmesh", category: "ScanSession")
+
+    /// 얼굴 검출+JPEG 인코딩+raw depth/confidence 쓰기를 ARSession 델리게이트
+    /// 콜백 스레드 밖으로 옮기는 큐 -- 이 작업들이 전부 콜백 안에서 동기로 돌면
+    /// 프레임 처리가 밀리거나 트래킹이 끊기는 원인이 될 수 있다(2026-09-04,
+    /// PRODUCT-PLAN.md "캡처 루프 오프로딩" 항목).
+    private let processingQueue = DispatchQueue(label: "scanmesh.frame-processing", qos: .userInitiated)
+    private let processingLock = NSLock()
+    private var isProcessingFrame = false
+
+    /// 세션당 저장 실패가 누적되면(디스크 공간 부족 등 시스템적 문제일 가능성이
+    /// 높음) 프레임마다 조용히 실패하는 대신 한 번은 사용자에게 알린다 -- 매
+    /// 프레임마다 알리면 그 자체로 방해가 되므로 임계값을 넘을 때 한 번만.
+    private var saveFailureCount = 0
+    private static let saveFailureGuidanceThreshold = 3
 
     override init() {
         super.init()
@@ -114,12 +130,12 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         // 기기별로 다를 수 있어 방어적으로 확인한다.
         if ARWorldTrackingConfiguration.supportsSceneReconstruction(.meshWithClassification) {
             config.sceneReconstruction = .meshWithClassification
-            print("[mesh] meshWithClassification 사용")
+            logger.debug("meshWithClassification 사용")
         } else if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
             config.sceneReconstruction = .mesh
-            print("[mesh] mesh 사용 (classification 미지원)")
+            logger.debug("mesh 사용 (classification 미지원)")
         } else {
-            print("[mesh] 이 기기는 sceneReconstruction을 지원하지 않음 -- scan.usdz 안 나옴")
+            logger.notice("이 기기는 sceneReconstruction을 지원하지 않음 -- scan.usdz 안 나옴")
         }
         config.frameSemantics = [.sceneDepth, .smoothedSceneDepth]
         session.run(config, options: [.resetTracking, .removeExistingAnchors])
@@ -135,8 +151,7 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         // pause() 이후에도 currentFrame이 남아있을 걸로 기대하기보다, 살아있는
         // 상태에서 mesh anchor를 먼저 확보해둔다.
         let meshAnchors = session.currentFrame?.anchors.compactMap { $0 as? ARMeshAnchor } ?? []
-        print("[mesh] stopSession 시점 anchor 개수: \(meshAnchors.count), "
-            + "총 vertex 수: \(meshAnchors.reduce(0) { $0 + $1.geometry.vertices.count })")
+        logger.debug("stopSession 시점 anchor 개수: \(meshAnchors.count), 총 vertex 수: \(meshAnchors.reduce(0) { $0 + $1.geometry.vertices.count })")
         statusMessage = "저장 중..."
 
         // getCurrentWorldMap은 세션이 아직 running 상태일 때 호출해야 한다 -- 먼저
@@ -151,14 +166,27 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
 
     private func finishStopSession(meshAnchors: [ARMeshAnchor], worldMap: ARWorldMap?, worldMapError: Error?) {
         session.pause()
-        try? posesFile.close()
-        writeManifest()
+        let posesCloseStatus = closePosesFile()
+        let manifestStatus = writeManifest()
         let meshStatus = exportMesh(meshAnchors)
         let worldMapStatus = exportWorldMap(worldMap, error: worldMapError)
         isRunning = false
         guidanceMessage = nil
         lastOutputDir = outputDir
-        statusMessage = "정지됨 (\(frameCount) 프레임, \(outputDir.lastPathComponent))\(meshStatus)\(worldMapStatus)"
+        statusMessage = "정지됨 (\(frameCount) 프레임, \(outputDir.lastPathComponent))\(posesCloseStatus)\(manifestStatus)\(meshStatus)\(worldMapStatus)"
+    }
+
+    /// poses.jsonl 파일 핸들을 닫는다 -- 실패해도 이미 쓴 내용은 디스크에 남아있을
+    /// 가능성이 높지만(대개 버퍼가 이미 flush된 뒤라), 파일 시스템이 진짜 문제가
+    /// 있는 상태(디스크 꽉 참 등)일 수도 있어 조용히 넘기지 않는다.
+    private func closePosesFile() -> String {
+        do {
+            try posesFile.close()
+            return ""
+        } catch {
+            logger.error("poses.jsonl 닫기 실패 -- \(error.localizedDescription, privacy: .public)")
+            return ", poses 파일 닫기 실패"
+        }
     }
 
     /// scan.usdz로 내보낸다 (scan-to-map-studio --usdz 입력용, 지도화/robot 연동 트랙).
@@ -171,17 +199,16 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
     private func exportMesh(_ meshAnchors: [ARMeshAnchor]) -> String {
         guard let outputDir else { return "" }
         guard !meshAnchors.isEmpty else {
-            print("[mesh] mesh anchor가 0개 -- sceneReconstruction이 이 세션에서 활성화 안 됐거나 "
-                + "너무 짧게 스캔해서 ARKit이 mesh를 아직 못 만든 상태")
+            logger.notice("mesh anchor가 0개 -- sceneReconstruction이 이 세션에서 활성화 안 됐거나 너무 짧게 스캔해서 ARKit이 mesh를 아직 못 만든 상태")
             return ", mesh 없음"
         }
         let usdzURL = outputDir.appendingPathComponent("scan.usdz")
         do {
             try MeshExporter.export(meshAnchors: meshAnchors, to: usdzURL)
-            print("[mesh] scan.usdz 저장 완료: \(usdzURL.path)")
+            logger.debug("scan.usdz 저장 완료: \(usdzURL.path, privacy: .public)")
             return ", scan.usdz 저장됨"
         } catch {
-            print("[mesh] scan.usdz export 실패: \(error)")
+            logger.error("scan.usdz export 실패 -- \(error.localizedDescription, privacy: .public)")
             return ", mesh export 실패(\(error.localizedDescription))"
         }
     }
@@ -193,17 +220,17 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
     private func exportWorldMap(_ worldMap: ARWorldMap?, error: Error?) -> String {
         guard let outputDir else { return "" }
         guard let worldMap else {
-            print("[worldmap] getCurrentWorldMap 실패: \(error?.localizedDescription ?? "알 수 없는 오류")")
+            logger.error("getCurrentWorldMap 실패 -- \(error?.localizedDescription ?? "알 수 없는 오류", privacy: .public)")
             return ", 위치확인용 지도 저장 실패"
         }
         let url = outputDir.appendingPathComponent("worldmap.arexperience")
         do {
             let data = try NSKeyedArchiver.archivedData(withRootObject: worldMap, requiringSecureCoding: true)
             try data.write(to: url)
-            print("[worldmap] worldmap.arexperience 저장 완료 (\(data.count) bytes, anchor \(worldMap.anchors.count)개)")
+            logger.debug("worldmap.arexperience 저장 완료 (\(data.count) bytes, anchor \(worldMap.anchors.count)개)")
             return ", 위치확인용 지도 저장됨"
         } catch {
-            print("[worldmap] worldmap 저장 실패: \(error)")
+            logger.error("worldmap 저장 실패 -- \(error.localizedDescription, privacy: .public)")
             return ", 위치확인용 지도 저장 실패(\(error.localizedDescription))"
         }
     }
@@ -218,10 +245,29 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         guard isRunning, shouldCapture(frame) else { return }
         guard let depthData = frame.smoothedSceneDepth ?? frame.sceneDepth else { return }
 
+        guard tryBeginProcessing() else {
+            // 이전 프레임의 백그라운드 처리가 아직 안 끝났다 -- 이 프레임은 그냥
+            // 버린다. 큐를 계속 쌓는 대신 최신 상태를 유지하는 쪽을 택했다(오래된
+            // 프레임을 늦게 저장해봐야 스캔 품질에 도움이 안 됨). 캡처 자체가 이미
+            // 0.1초/0.2m로 스로틀링돼 있어서 정상 기기에서는 거의 안 일어난다 --
+            // 자주 찍히면 발열/저사양 신호로 볼 수 있다.
+            logger.notice("이전 프레임 처리 중 -- frame \(self.frameIndex + 1) 건너뜀")
+            return
+        }
+
         frameIndex += 1
         let index = frameIndex
-        saveRGB(frame.capturedImage, index: index)
-        saveDepth(depthData.depthMap, confidenceMap: depthData.confidenceMap, index: index)
+
+        // 픽셀 버퍼를 강한 참조로 잡아 백그라운드 큐로 넘긴다 -- ARKit은 콜백이
+        // 반환된 뒤 자기 내부 재사용 풀에서 이 프레임을 빼낼 뿐이고, Swift가
+        // 참조를 들고 있는 한 CVPixelBuffer 자체는 안전하다. 얼굴 검출+JPEG
+        // 인코딩(FaceRedactor, Vision+CoreImage)과 raw depth/confidence 파일
+        // 쓰기가 무거운 부분이라 이 콜백 스레드 밖으로 뺀다. appendPose는
+        // transform/intrinsics 같은 가벼운 값만 읽으므로 그대로 동기로 둔다 --
+        // poses.jsonl에 순서대로 즉시 남는 게 이후 처리 완료 순서와 무관해도 된다.
+        let colorBuffer = frame.capturedImage
+        let depthBuffer = depthData.depthMap
+        let confidenceBuffer = depthData.confidenceMap
         appendPose(frame: frame, index: index)
 
         recentCameraPositions.append(simd_float3(
@@ -233,12 +279,50 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
             recentCameraPositions.removeFirst()
         }
 
+        processingQueue.async { [weak self] in
+            guard let self else { return }
+            self.saveRGB(colorBuffer, index: index)
+            self.saveDepth(depthBuffer, confidenceMap: confidenceBuffer, index: index)
+            self.endProcessing()
+        }
+
         DispatchQueue.main.async { [weak self] in
             self?.frameCount = index
         }
     }
 
+    /// 처리 중이 아니면 true를 반환하며 "처리 중"으로 표시하고, 이미 처리 중이면
+    /// false(이번 프레임은 버림). `processingQueue`의 작업이 끝나면 반드시
+    /// `endProcessing()`을 호출해 다시 열어줘야 한다.
+    private func tryBeginProcessing() -> Bool {
+        processingLock.lock()
+        defer { processingLock.unlock() }
+        guard !isProcessingFrame else { return false }
+        isProcessingFrame = true
+        return true
+    }
+
+    private func endProcessing() {
+        processingLock.lock()
+        isProcessingFrame = false
+        processingLock.unlock()
+    }
+
+    /// 프레임 저장(사진/depth) 실패를 누적하다가 임계값을 넘으면 한 번만
+    /// guidanceMessage로 알린다. `processingQueue`에서 호출되므로 게시되는 상태는
+    /// 전부 메인 큐로 넘긴다.
+    private func recordSaveFailure() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.saveFailureCount += 1
+            if self.saveFailureCount == Self.saveFailureGuidanceThreshold {
+                self.guidanceMessage = "저장에 계속 실패하고 있어요 — 저장 공간을 확인해주세요"
+            }
+        }
+    }
+
     func session(_ session: ARSession, didFailWithError error: Error) {
+        logger.error("ARSession 오류 -- \(error.localizedDescription, privacy: .public)")
         DispatchQueue.main.async { [weak self] in
             self?.statusMessage = "세션 오류: \(error.localizedDescription)"
         }
@@ -252,6 +336,14 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
     /// 찍어서 프레임 수만 채운 상태로 "이제 충분해요"를 먼저 보여주면 텍스처 품질
     /// 문제를 놓치고 그냥 저장하게 된다 — 움직이라는 안내가 더 급하다.
     private func updateGuidance(frame: ARFrame) {
+        // 발열이 트래킹/거리 안내보다 급하다 -- 계속 스캔하면 iOS가 스스로 성능을
+        // 낮추거나(프레임 드롭 심해짐) 최악의 경우 앱이 강제 종료될 수 있다.
+        if let thermalMessage = Self.thermalGuidanceMessage(for: ProcessInfo.processInfo.thermalState) {
+            guard thermalMessage != guidanceMessage else { return }
+            DispatchQueue.main.async { [weak self] in self?.guidanceMessage = thermalMessage }
+            return
+        }
+
         let message: String?
         switch frame.camera.trackingState {
         case .notAvailable:
@@ -288,6 +380,17 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         guard message != guidanceMessage else { return }
         DispatchQueue.main.async { [weak self] in
             self?.guidanceMessage = message
+        }
+    }
+
+    /// `.serious`/`.critical`일 때만 안내한다 -- `.nominal`/`.fair`는 정상 범위라
+    /// 스캔 흐름을 방해할 필요가 없다.
+    private static func thermalGuidanceMessage(for state: ProcessInfo.ThermalState) -> String? {
+        switch state {
+        case .critical: return "기기가 많이 뜨거워요 — 스캔을 마무리하고 식힌 뒤 이어가세요"
+        case .serious: return "기기가 뜨거워지고 있어요 — 잠시 쉬었다 스캔하면 좋아요"
+        case .nominal, .fair: return nil
+        @unknown default: return nil
         }
     }
 
@@ -357,26 +460,39 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
                   colorSpace: colorSpace,
                   options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.85]
               )
-        else { return }
+        else {
+            logger.error("frame \(index): JPEG 인코딩 실패")
+            recordSaveFailure()
+            return
+        }
 
         let url = rgbDir.appendingPathComponent("frame_\(paddedIndex(index)).jpg")
-        try? jpegData.write(to: url)
+        do {
+            try jpegData.write(to: url)
+        } catch {
+            logger.error("frame \(index): rgb 쓰기 실패 -- \(error.localizedDescription, privacy: .public)")
+            recordSaveFailure()
+        }
     }
 
     private func saveDepth(_ depthMap: CVPixelBuffer, confidenceMap: CVPixelBuffer?, index: Int) {
-        writeRawFloat32(depthMap, to: depthDir.appendingPathComponent("frame_\(paddedIndex(index)).depth"))
+        writeRawFloat32(depthMap, to: depthDir.appendingPathComponent("frame_\(paddedIndex(index)).depth"), index: index, label: "depth")
         if let confidenceMap {
             // confidenceMap은 OneComponent8(UInt8, 0=low/1=medium/2=high)로 나오지만
             // pipeline의 load_depth_raw가 depth와 동일하게 float32로 읽으므로
             // 저장 단계에서 float32로 변환해 둔다.
-            writeConfidenceAsFloat32(confidenceMap, to: depthDir.appendingPathComponent("frame_\(paddedIndex(index)).conf"))
+            writeConfidenceAsFloat32(confidenceMap, to: depthDir.appendingPathComponent("frame_\(paddedIndex(index)).conf"), index: index)
         }
     }
 
-    private func writeRawFloat32(_ pixelBuffer: CVPixelBuffer, to url: URL) {
+    private func writeRawFloat32(_ pixelBuffer: CVPixelBuffer, to url: URL, index: Int, label: String) {
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
-        guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else { return }
+        guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else {
+            logger.error("frame \(index): \(label, privacy: .public) 버퍼 주소를 못 얻음")
+            recordSaveFailure()
+            return
+        }
 
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
@@ -388,13 +504,22 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         for row in 0..<height {
             data.append(ptr + row * bytesPerRow, count: tightRowBytes)
         }
-        try? data.write(to: url)
+        do {
+            try data.write(to: url)
+        } catch {
+            logger.error("frame \(index): \(label, privacy: .public) 쓰기 실패 -- \(error.localizedDescription, privacy: .public)")
+            recordSaveFailure()
+        }
     }
 
-    private func writeConfidenceAsFloat32(_ pixelBuffer: CVPixelBuffer, to url: URL) {
+    private func writeConfidenceAsFloat32(_ pixelBuffer: CVPixelBuffer, to url: URL, index: Int) {
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
-        guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else { return }
+        guard let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else {
+            logger.error("frame \(index): confidence 버퍼 주소를 못 얻음")
+            recordSaveFailure()
+            return
+        }
 
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
@@ -409,7 +534,12 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
             }
         }
         let data = floatValues.withUnsafeBufferPointer { Data(buffer: $0) }
-        try? data.write(to: url)
+        do {
+            try data.write(to: url)
+        } catch {
+            logger.error("frame \(index): confidence 쓰기 실패 -- \(error.localizedDescription, privacy: .public)")
+            recordSaveFailure()
+        }
     }
 
     func appendPose(frame: ARFrame, index: Int) {
@@ -435,8 +565,11 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
 
     // MARK: - manifest.json
 
-    private func writeManifest() {
-        guard let start = sessionStartTime, let outputDir = outputDir else { return }
+    /// manifest.json 쓰기 실패는 한 번뿐인 세션 종료 이벤트라(프레임마다 반복되는
+    /// saveRGB/saveDepth 실패와 달리), 조용히 넘기지 않고 statusMessage에 바로
+    /// 보이게 한다 -- exportMesh/exportWorldMap과 같은 패턴.
+    private func writeManifest() -> String {
+        guard let start = sessionStartTime, let outputDir else { return "" }
         let manifest = ScanRecordBuilder.buildManifest(
             sessionName: outputDir.lastPathComponent,
             deviceModel: deviceModelIdentifier(),
@@ -447,8 +580,14 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
             captureIntervalSeconds: captureIntervalSeconds,
             captureMinDistanceMeters: captureMinDistanceMeters
         )
-        guard let data = try? JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted]) else { return }
-        try? data.write(to: outputDir.appendingPathComponent("manifest.json"))
+        do {
+            let data = try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted])
+            try data.write(to: outputDir.appendingPathComponent("manifest.json"))
+            return ""
+        } catch {
+            logger.error("manifest.json 쓰기 실패 -- \(error.localizedDescription, privacy: .public)")
+            return ", manifest 저장 실패"
+        }
     }
 
     private func deviceModelIdentifier() -> String {

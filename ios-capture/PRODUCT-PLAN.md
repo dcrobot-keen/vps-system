@@ -39,7 +39,7 @@
 - [ ] 앱 아이콘, 런치 스크린(현재 자동 생성), 스크린샷(iPhone 6.9"/6.5", **iPad 13"** — 아래 iPad 지원 결정으로 인해 필수)
 - [x] **개인정보 처리방침 — GitHub Pages로 결정(2026-09-04)**: `docs/privacy/index.html`(한/영 병기) 작성 + `vps-system` 저장소에 Pages 활성화. URL: `https://dcrobot-keen.github.io/vps-system/privacy/`. **문의 이메일 주소가 아직 placeholder — 제출 전 실제 주소로 교체 필요**
 - [ ] App Privacy 라벨(App Store Connect에서 별도 입력) — 사진 저장, 고급 모드 시 서버 전송 항목 신고
-- [ ] 로컬라이제이션: 개발 언어 ko로 설정함 → `Localizable.xcstrings` 만들고 영어 번역
+- [x] **로컬라이제이션 — 정적 UI 문자열** — `vps/Localizable.xcstrings` 작성(ko 소스 + en 번역, 37개 항목: 화면 타이틀/버튼/탭/섹션 헤더·푸터/placeholder/빈 상태 안내 전부). 이 과정에서 실제 버그 2개 발견·수정: `ServerSettingsView`/`ScanView`가 `Text("A" + "B")`처럼 두 리터럴을 `+`로 이어붙이던 곳이 있었는데, `+`는 `String`에만 있어서 그 결과가 `String`으로 타입이 굳어 `Text(_:LocalizedStringKey)`가 아니라 `Text(_:String)`(그대로 표시, 지역화 절대 안 됨) 쪽으로 조용히 빠지고 있었다 — 리터럴을 하나로 합치고(`ScanView`의 경우 `LocalizedStringKey` 타입 명시까지) 고침. **범위 밖(다음 배치)**: `statusMessage`/`guidanceMessage`/`*ErrorMessage`류(`@Published var x: String`에 동적으로 조립해 대입 후 `Text(변수)`로 표시 — 애초에 `String` 타입이라 String Catalog가 못 잡음, `String(localized:)`로 만드는 리팩터가 따로 필요)와 `LocalizeView.coordinateLine`의 `label` 매개변수(같은 이유)는 한국어로 남음. `\(count)장`처럼 리터럴에 보간이 있는 것들(`"캡처된 사진 (\(rgbURLs.count)장)"` 등 6곳)은 Text/Label에 직접 리터럴로 들어가 있어 로컬라이즈 대상은 맞지만, Xcode 실제 추출기가 만드는 정확한 `%lld`/`%@` 키 형식을 여기서 손으로 재현하면 틀릴 위험이 있어 이번엔 안 넣었다 — **맥에서 한 번 빌드하면 `SWIFT_EMIT_LOC_STRINGS=YES`가 이미 켜져 있어 같은 카탈로그에 자동으로 추가됨, 그때 en 번역만 채우면 됨**
 - [x] **iPad 지원 유지로 결정(2026-09-04)** — `TARGETED_DEVICE_FAMILY = "1,2"` 이미 그 상태(변경 불필요). iPad 스크린샷/레이아웃 QA는 여전히 필요(위 체크리스트 항목)
 - [ ] 심사 노트: 서버 없이 전체 플로우 데모 가능함을 명시, LiDAR 기기 필요 명시
 
@@ -53,9 +53,9 @@
 - [x] **스캔 포맷 회귀 게이트, XCTest 부분** — `manifest.json`/`poses.jsonl`을 만드는 로직을 순수 함수로 뽑아낸 `ScanRecordBuilder.swift`(ARFrame 의존 제거, `ScanSessionManager`가 그대로 씀)를 만들고, `vpsTests/ScanFormatConformanceTests.swift`가 `vps-system/scan-format/*.schema.json`(정본)을 직접 읽어 그 출력과 대조(필수 키·타입, `tracking_state` enum까지). 대조기는 `MiniSchemaValidator.swift`(이 두 스키마에 필요한 만큼만 지원하는 좁은 서브셋)
   - [ ] CI 부분(미배선): 이 테스트가 만드는 fixture 스캔 폴더에 `conformance_check.py`를 추가로 돌려 Python 소비자 쪽에서도 이중 확인 — CI 구축 시 같이
 - [x] 첫 XCTest들 (`vpsTests/RegistrationTransformTests.swift`, `MiniSchemaValidator.swift`, `ScanFormatConformanceTests.swift`) — **Xcode에서 Unit Testing Bundle 타깃 `vpsTests` 추가 필요**(폴더 지정만 하면 셋 다 자동 포함)
-- [ ] 캡처 루프 오프로딩: JPEG 인코딩 + 얼굴 검출을 ARSession 델리게이트 스레드 밖 큐로, 백프레셔(프레임 드롭) + `ProcessInfo.thermalState`
-- [ ] 방향 추적: 가로/세로 모두 허용 중 → 실제 기기 방향을 Vision에 정확히 전달(지금은 두 방향 시도로 땜질)
-- [ ] `try?`로 삼키는 에러를 사용자 표시 + OSLog로
+- [x] **캡처 루프 오프로딩** — `ScanSessionManager`에 `processingQueue`(백그라운드 직렬 큐) 추가, `saveRGB`/`saveDepth`(얼굴 검출+JPEG 인코딩+raw depth/confidence 쓰기)를 ARSession 델리게이트 콜백 스레드 밖으로 이동. `NSLock` 기반 백프레셔(`tryBeginProcessing`/`endProcessing`) — 이전 프레임 처리가 안 끝났으면 새 프레임은 버림(큐에 안 쌓음). `appendPose`는 가벼운 값만 읽어서 그대로 동기 유지. `ProcessInfo.thermalState`를 `updateGuidance`의 최우선 순위로 추가(`.serious`/`.critical`일 때 안내), 저장 실패 누적 시 3회부터 `guidanceMessage`로 한 번 알림(`recordSaveFailure`)
+- [ ] 방향 추적: 가로/세로 모두 허용 중 → 실제 기기 방향을 Vision에 정확히 전달(지금은 두 방향 시도로 땜질) — 남아있는 별개 항목
+- [x] **`try?`를 OSLog + 에러 표시로** — `ScanSessionManager`/`FaceRedactor`/`TextureBaker`의 모든 `print()`를 `os.Logger`(subsystem `com.dcrobot.scanmesh`)로 교체. 문자열 보간 값은 기본적으로 `os.Logger`가 private 처리(Console.app에 `<private>`로 보임)하므로 진단에 필요한 것(에러 메시지, 파일 경로, 라벨 등)은 전부 `privacy: .public` 명시(숫자는 기본 public이라 그대로 둠). `writeManifest`/`posesFile.close()`를 do/catch로 바꿔 `exportMesh`/`exportWorldMap`과 같은 패턴(실패 시 `statusMessage`에 접미사)으로 통일. 프레임당 저장 실패는 `saveFailureCount` 누적 + 임계값(3) 도달 시 1회만 안내(매 프레임 알리면 그 자체가 방해). `ImportedFileStore.importFile`도 조용한 실패 → `importErrorMessage` + 알림창으로 변경(사용자가 직접 시킨 동작이라 실패를 알아야 함)
 - [ ] 저장 공간 표시/경고, 프로젝트 용량 표시
 - [ ] 업로드 background URLSession(고급 모드)
 - [ ] 테스트 확장: ZipArchiver, PCD/PLY/GLB 로더, manifest 기록, FaceRedactor(얼굴 샘플 이미지 필요)

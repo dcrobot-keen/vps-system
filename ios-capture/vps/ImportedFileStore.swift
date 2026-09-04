@@ -1,5 +1,8 @@
 import Combine
 import Foundation
+import os
+
+private let logger = Logger(subsystem: "com.dcrobot.scanmesh", category: "ImportedFileStore")
 
 /// glb/pcd/ply/usdz/obj 같은 외부 3D 결과물(파이프라인/scan-to-map-studio/
 /// Gaussian Splatting 등에서 나온 파일)을 폰으로 가져와서 보기 위한 저장소.
@@ -10,6 +13,7 @@ import Foundation
 @MainActor
 final class ImportedFileStore: ObservableObject {
     @Published private(set) var files: [ImportedFile] = []
+    @Published var importErrorMessage: String?
 
     static let supportedExtensions: Set<String> = ["glb", "pcd", "ply", "usdz", "obj"]
 
@@ -46,7 +50,8 @@ final class ImportedFileStore: ObservableObject {
             try FileManager.default.copyItem(at: sourceURL, to: destination)
             refresh()
         } catch {
-            print("[imports] 파일 가져오기 실패: \(error)")
+            logger.error("파일 가져오기 실패(\(sourceURL.lastPathComponent, privacy: .public)) -- \(error.localizedDescription, privacy: .public)")
+            importErrorMessage = "\"\(sourceURL.lastPathComponent)\" 가져오기 실패: \(error.localizedDescription)"
         }
     }
 
