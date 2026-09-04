@@ -51,6 +51,36 @@ final class ZipArchiverTests: XCTestCase {
         let entries = try MinimalZipReader.readEntries(from: zipData)
         XCTAssertTrue(entries.isEmpty)
     }
+
+    /// 프로젝트(ScanGroup) 전체 export용 -- 스캔 폴더가 여러 개면 각자 자기 이름을
+    /// 최상위 폴더로 써서 한 zip에 들어가야 한다(scan_A/manifest.json 처럼).
+    func testZipOfMultipleDirectoriesPrefixesEachWithItsFolderName() throws {
+        let root = sourceDir.deletingLastPathComponent()
+        let dirA = root.appendingPathComponent("scan_A")
+        let dirB = root.appendingPathComponent("scan_B")
+        try FileManager.default.createDirectory(at: dirA, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: dirB, withIntermediateDirectories: true)
+        try Data("A".utf8).write(to: dirA.appendingPathComponent("manifest.json"))
+        try Data("B".utf8).write(to: dirB.appendingPathComponent("manifest.json"))
+
+        try ZipArchiver.zip(directories: [dirA, dirB], to: zipURL)
+
+        let entries = try MinimalZipReader.readEntries(from: try Data(contentsOf: zipURL))
+        let byName = Dictionary(uniqueKeysWithValues: entries.map { ($0.name, $0) })
+        XCTAssertEqual(entries.count, 2)
+        XCTAssertEqual(byName["scan_A/manifest.json"]?.data, Data("A".utf8))
+        XCTAssertEqual(byName["scan_B/manifest.json"]?.data, Data("B".utf8))
+    }
+
+    /// 폴더가 하나뿐이면(기존 zip(directory:to:) 경로) 접두사 없이, 지금까지의
+    /// 동작(VPSUploadClient 등이 기대하는 최상위 rgb/depth/poses)과 완전히 같아야
+    /// 한다 -- zip(directories:) 리팩터가 이 경로를 바꾸지 않았는지 고정해둔다.
+    func testZipOfSingleDirectoryViaMultiOverloadHasNoPrefix() throws {
+        try Data("x".utf8).write(to: sourceDir.appendingPathComponent("manifest.json"))
+        try ZipArchiver.zip(directories: [sourceDir], to: zipURL)
+        let entries = try MinimalZipReader.readEntries(from: try Data(contentsOf: zipURL))
+        XCTAssertEqual(entries.first?.name, "manifest.json")
+    }
 }
 
 /// `ZipArchiver`가 쓰는 것과 정확히 같은 최소 포맷(로컬 헤더 연속, store 방식, 압축

@@ -177,6 +177,58 @@
   새로 설계해야 함 — vps-system/scan-to-map-studio/pathfinder 세 저장소에 걸친 별도
   작업으로 남겨둠.
 
+### F. 프로젝트 개념(여러 스캔 묶기) — 2026-09-04 신규 요청
+
+세 가지 요청: ① "프로젝트"가 스캔 하나가 아니라 여러 스캔을 묶는 상위 개념이어야
+함, ② 프로젝트 안 스캔들을 합칠 수 있어야 함, ③ export 시 ply/pcd/glb/프로젝트
+중 골라서 내보낼 수 있어야 함. 합치는 방식은 정합(ICP 등) 없이 **"이어서
+스캔"**(이전 스캔의 worldmap을 불러와 같은 좌표계에서 캡처)으로 결정 — 이 앱에
+이미 있는 ARWorldMap 재국지화(위치 확인 기능)를 그대로 재사용할 수 있어서.
+export는 "프로젝트(합쳐진 것) 단위만" 하기로 결정, 스캔 개별 export는 범위 밖.
+
+**1단계(이번, 완료) — 프로젝트 그룹 + 이어서 스캔:**
+- `ScanGroupStore.swift`(신규): 여러 `scan_<name>/` 폴더를 묶는 가벼운 인덱스
+  (`Documents/scan_groups.json`) — 기존 스캔 폴더 구조는 전혀 안 건드림(zip/텍스처
+  베이킹/바닥 평면/업로드 등 그 폴더를 직접 다루는 코드가 다 그대로 동작해야 해서).
+  `indexURL`을 주입 가능하게 해서(`ScanGroupStoreTests`) 순수 파일 I/O로 검증.
+- `ScanSessionManager.startSession(name:continuingFromWorldMapURL:)` — 넘겨주면
+  이전 스캔의 `worldmap.arexperience`를 `initialWorldMap`으로 로드해서 같은
+  좌표계로 캡처 시작. 재국지화 중엔 기존 `updateGuidance`의
+  `.limited(.relocalizing)` 안내("재추적 중...")가 그대로 뜸(추가 UI 없이 재사용).
+  로드 실패하면 조용히 새 좌표계로 시작(완전히 막는 것보다 나음).
+- `ProjectGroupListView.swift`(신규, 앱의 "프로젝트" 탭 루트로 교체) + `ProjectGroupDetailView.swift`(신규, 그룹 안 스캔 목록 + "스캔 추가"로 이어서
+  스캔 → 저장되면 `ScanGroupStore.addScan`으로 그룹에 등록). 기존 `ProjectListView.swift`(스캔 하나 = "프로젝트"였던 옛 루트 화면)는 삭제 —
+  `ShareItem`/`ShareSheet`만 `ShareSheet.swift`로 옮겨서 재사용(`ProjectDetailView`가
+  여전히 씀). 스캔 하나를 보여주는 `ProjectDetailView`/`ScanView`/`ProjectStore`/
+  `ScanProject` 이름 자체는 안 바꿈(전부 이미 테스트/CI로 검증된 코드라 이름만
+  바꾸는 리스크를 피함) — 사용자에게 보이는 문구만 "프로젝트=그룹, 스캔=개별
+  캡처"로 구분.
+  - [ ] 실기 검증 안 됨 — 특히 "이어서 스캔"의 재국지화가 실제로 잘 되는지,
+    그렇게 이어붙인 두 스캔이 실제로 같은 좌표계에 정확히 놓이는지.
+
+**2단계(이번, 완료) — 합치기 + export 피커:**
+- `ScanGroupMerger.swift`(신규): 그룹 안 스캔들의 `scan.usdz`를 `MeshUnifier.load`로
+  각각 읽어 위치/인덱스 버퍼를 그대로 이어붙이고(정합 계산 없음, 이미 같은 좌표계),
+  `MeshUnifier.weld`로 스캔 경계의 근접 중복 정점만 정리(TextureBaker와 같은 처리),
+  `MeshGeometryBuilder.computeFaceNormals`로 normal 계산. `MergedMesh.unindexedForGLB()`
+  는 GLB export 전용 보조(GLBWriter가 인덱스 버퍼를 지원 안 해서 face-corner마다 정점을
+  다시 풀어냄) — `ScanGroupMergerTests`가 `SCNScene.write(to:)`로 만든 최소 usdz
+  fixture 2개로 실제 합치기(인덱스 오프셋, 용접 안 됨 확인)까지 검증.
+- `PLYWriter.swift`/`PCDWriter.swift`(신규) — 이전엔 로더만 있고 writer가 없었음.
+  둘 다 binary 포맷만 씀(ASCII 왕복 정밀도 걱정 없음), 각각 `PLYLoader`/`PCDLoader`로
+  다시 읽는 왕복 테스트로 검증(`PLYWriterTests`/`PCDWriterTests`).
+- `ZipArchiver.zip(directories:to:)`(신규 오버로드) — 여러 스캔 폴더를 하나의 zip에
+  각자 자기 폴더 이름을 접두사로 붙여서 합친다(`scan_A/...`, `scan_B/...`). 폴더
+  하나짜리 기존 `zip(directory:to:)` 경로(VPSUploadClient 등)는 접두사 없이 그대로
+  — 회귀 없음을 `ZipArchiverTests`로 고정.
+- `ProjectGroupDetailView`에 "내보내기" 메뉴(PLY/PCD/GLB/프로젝트 전체 zip) 추가 —
+  합치기/압축을 백그라운드 큐에서 돌리고 끝나면 공유 시트. GLB는 텍스처가 필수라
+  (TextureBaker 전용 설계) 1×1 흰 텍스처를 placeholder로 채움 — 합쳐진 결과 자체는
+  이 앱의 기존 방침대로 무채색.
+- 실기 검증 안 됨(위 1단계와 같은 사유 — "이어서 스캔"이 실제로 잘 정렬되는지 확인
+  안 되면 합친 mesh도 의미가 없음). 바닥 평면 합치기는 이번 범위에서 뺌(요청의
+  핵심은 mesh였다고 판단, 필요해지면 별도로).
+
 ## 결정 (2026-09-04) — 5개 전부 완료
 1. ~~제품명(영/한) + 번들 ID~~ → **ScanMesh / 스캔메시**, `com.dcrobot.scanmesh` (2026-09-04 재확인: 위치확인/바닥 평면까지 기능이 늘었어도 여전히 유효 — 스캔이 핵심 동작이고 나머지는 그 파생 산출물이라는 판단. 표시 이름은 번들 ID와 달리 언제든 바꿀 수 있어 되돌릴 수 없는 결정이 아님)
 2. ~~개발자 계정 주체~~ → **개인**
