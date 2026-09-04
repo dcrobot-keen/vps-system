@@ -59,6 +59,15 @@ jobs:
       # 것. 이제 타깃 배포 타깃은 앱과 맞춰 17.0으로 내렸지만, 그거와 별개로
       # "구버전 런타임을 뽑을 위험" 자체를 없애기 위해 OS 버전 내림차순 정렬 후
       # 제일 최신 걸 고른다(Any/최신 iOS를 요구하는 타깃이 나중에 생겨도 안전).
+      #
+      # 그 다음 실행은 테스트 자체는 10개 전부 통과했는데도 exit 65로 깨졌다 --
+      # 스킴의 TestableReference가 parallelizable="YES"라 xcodebuild가 시뮬레이터
+      # 클론을 2개(Clone 1/Clone 2 of iPhone 17) 띄워 병렬로 도는데, 그 중 하나가
+      # "Simulator device failed to launch ... RequestDenied / test runner hung
+      # before establishing connection"으로 죽었다 -- 코드 문제가 아니라 CI 러너
+      # 리소스 제약에서 오는 병렬 시뮬레이터 부팅 경합. 테스트가 10개뿐이라 병렬화
+      # 이득도 없어서, 스킴 쪽 parallelizable을 NO로 내리고 여기서도
+      # -disable-concurrent-testing으로 이중으로 막아 단일 시뮬레이터에서만 돈다.
       - name: Pick an available iPhone simulator
         id: sim
         run: |
@@ -93,4 +102,5 @@ jobs:
             -project vps.xcodeproj \
             -scheme vps \
             -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -disable-concurrent-testing \
             CODE_SIGNING_ALLOWED=NO
