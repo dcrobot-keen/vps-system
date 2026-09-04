@@ -133,6 +133,7 @@ struct ProjectDetailView: View {
             loadRGBList()
             hasTexturedGLB = FileManager.default.fileExists(atPath: texturedGLBURL.path)
             loadProjectSize()
+            resumeUploadIfNeeded()
         }
         .fullScreenCover(isPresented: $isShowingMeshViewer) {
             NavigationStack {
@@ -340,10 +341,33 @@ struct ProjectDetailView: View {
         }
     }
 
+    /// 이 화면이 마지막으로 떠 있는 동안(또는 앱이 통째로 재시작되는 동안) 백그라운드
+    /// 업로드가 끝났으면 `VPSUploadClient`가 `upload_status.json`에 결과를 남겨둔다 --
+    /// 화면이 다시 열릴 때마다 확인해서, "접수됨"이면 빌드 상태 폴링을 이어서 시작하고
+    /// "실패"면 에러를 보여준다. 둘 다 아니면(파일 자체가 없으면) 조용히 넘어간다.
+    private func resumeUploadIfNeeded() {
+        guard let outcome = VPSUploadClient.loadPersistedUploadOutcome(projectURL: project.url) else { return }
+        VPSUploadClient.clearPersistedUploadOutcome(projectURL: project.url)
+
+        switch outcome.status {
+        case "accepted":
+            guard let serverURL = ServerSettingsStore().serverURL else { return }
+            isUploading = true
+            uploadErrorMessage = nil
+            uploadStatusText = "서버에서 처리 중…"
+            pollScanStatus(scanName: project.id, serverURL: serverURL, deadline: Date().addingTimeInterval(10 * 60))
+        case "failed":
+            uploadErrorMessage = "업로드 실패: \(outcome.errorMessage ?? "알 수 없는 오류")"
+        default:
+            break
+        }
+    }
+
     /// scan_<name>/를 zip으로 압축(ZipArchiver, ProjectStore.exportZip과 같은 함수
-    /// 재사용) -> VPSUploadClient로 업로드 -> 서버 job이 끝날 때까지 폴링. 업로드
-    /// 중에는 앱을 켜둔 상태로 유지해야 한다(백그라운드 세션이 아니라 foreground
-    /// URLSession이라 — 이 단계에서는 진짜 백그라운드 전송까지는 범위 밖으로 뒀다).
+    /// 재사용) -> VPSUploadClient로 업로드(진짜 백그라운드 URLSession, 앱이 백그라운드로
+    /// 가거나 종료돼도 전송이 이어짐) -> 서버 job이 끝날 때까지 폴링. 폴링 자체는
+    /// foreground라 앱이 완전히 꺼지면 멈추지만, 업로드가 이미 서버에 도착한 뒤라면
+    /// 다음에 이 화면을 열 때 `resumeUploadIfNeeded`가 이어서 폴링을 다시 시작한다.
     private func startUpload() {
         let settingsStore = ServerSettingsStore()
         guard let serverURL = settingsStore.serverURL else {
