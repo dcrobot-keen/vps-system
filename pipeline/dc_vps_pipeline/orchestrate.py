@@ -55,6 +55,15 @@ def orchestrate(
     robot_map_prefix: Path | None = None,
     project_name: str | None = None,
 ) -> None:
+    # subprocess.run(cwd=scan_to_map_studio_dir) 아래에서 상대경로가 두 번 적용되지
+    # 않도록 여기서 전부 절대경로로 고정한다 (예: ../../scan-to-map-studio 를 넘기면
+    # studio.py 경로가 D:\code\scan-to-map-studio 로 어긋나던 문제).
+    scan_dir = scan_dir.resolve()
+    output_dir = output_dir.resolve()
+    if scan_to_map_studio_dir is not None:
+        scan_to_map_studio_dir = scan_to_map_studio_dir.resolve()
+    if scan_to_map_studio_python is not None:
+        scan_to_map_studio_python = scan_to_map_studio_python.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     project_name = project_name or scan_dir.name
 
