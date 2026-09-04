@@ -46,7 +46,26 @@
 ### B. 실기 검증 (맥 + LiDAR 기기 필요)
 - [x] **맥 + 실기기 빌드 성공 확인(2026-09-04)** — 배포 타깃 17.0 하향, `INFOPLIST_FILE=Info.plist` + `GENERATE_INFOPLIST_FILE=YES` 병합 둘 다 실기기 빌드로 통과(CI의 시뮬레이터 빌드보다 더 강한 확인). availability 에러 없음.
 - [x] **deface 실기 검증(2026-09-04) — 두 orientation 검출로 바꾼 수정이 실제로 얼굴을 잡음.** 확인됨.
-- [ ] 위치 확인(ARWorldMap), 사진 갤러리 — 아직 실기 확인 안 됨
+- [x] **사진 갤러리 실기 검증(2026-09-04) — 실사용 중 버그 2개 발견·수정.**
+  1. 캡처된 사진이 옆으로 누워 보임 — `rgb/*.jpg`는 ARKit `capturedImage`의
+     raw(landscape) 버퍼를 그대로 저장하는 정책(Python 파이프라인이 원본 픽셀
+     그대로 읽어야 해서 EXIF 보정 자체를 안 걸어둠)인데, 세로로 들고 스캔하는
+     일반적인 사용 방식에서는 그게 그대로 90도 누워 보였다. 디스크의 원본
+     바이트는 그대로 두고 화면 표시용으로만(`UIImage.imageOrientation`,
+     재인코딩 없음) `.right`로 세워서 보여주도록 수정
+     (`PhotoGalleryView.swift`의 `UIImage.forCapturedPhotoDisplay`, `ThumbnailView`/
+     `ZoomableImageView` 둘 다 적용). `floorplan.png` 뷰어는 이 보정이 필요 없어
+     `ZoomableImageView`에 `displayOrientation` 파라미터(기본값 `.up`)를 추가해
+     구분.
+  2. 썸네일을 탭하면 첫 번째 탭은 항상 엉뚱한(첫) 사진이 나오고 두 번째/세 번째
+     탭부터 제대로 나옴 — `fullScreenCover(isPresented:)` + 별도 `selectedPhotoIndex`
+     조합은 SwiftUI가 같은 `PhotoGalleryView` 인스턴스/State 저장소를 재사용해서
+     `init`의 `State(initialValue: startIndex)`가 처음 한 번만 적용되는 전형적인
+     함정이었다. `fullScreenCover(item:)` + `Identifiable` 아이템(`PhotoGalleryItem`,
+     탭마다 새 UUID)으로 바꿔 매번 새 State가 만들어지게 수정 — 이미 쓰고 있던
+     `ShareItem`/`fullScreenCover(item:)` 패턴과 동일.
+- [ ] 위치 확인(ARWorldMap) — 아직 실기 확인 안 됨(AR 바닥 오버레이 회전 방향
+  포함, 위 "E. 바닥 평면 & 경로 오버레이" 절 참고)
 - [ ] 발열/프레임 드롭: 긴 스캔(5분+)에서 `thermalState` 관찰(방금 넣은 캡처 루프 오프로딩 + 발열 안내가 실제로 도움이 되는지)
 
 ### C. 엔지니어링 품질

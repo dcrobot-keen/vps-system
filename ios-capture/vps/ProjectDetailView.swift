@@ -32,8 +32,21 @@ struct ProjectDetailView: View {
 
     @State private var isShowingLocalizeView = false
 
-    @State private var isShowingPhotoGallery = false
-    @State private var selectedPhotoIndex = 0
+    /// 탭한 인덱스를 담아 갤러리를 연다. `isShowingPhotoGallery: Bool` +
+    /// `selectedPhotoIndex: Int`(2026-09-04 이전 방식)였을 때는 첫 번째 탭에서
+    /// 항상 엉뚱한(첫) 사진이 나오고 두 번째부터 제대로 나오는 버그가 있었다 --
+    /// `fullScreenCover(isPresented:)`는 매번 같은 하위 뷰 인스턴스/State 저장소를
+    /// 재사용하므로, `PhotoGalleryView.init`의 `_currentIndex = State(initialValue:
+    /// startIndex)`가 처음 한 번만 적용되고 이후엔 무시돼(전형적인 SwiftUI 함정)
+    /// 이전에 열었던 인덱스가 그대로 남아있었다. `fullScreenCover(item:)`으로
+    /// 바꾸면 매번 새 `id`(다른 사진을 탭하든 같은 사진을 두 번 탭하든)가 생겨
+    /// SwiftUI가 매번 새 State를 만든다 -- `floorPlanShareItem`/`ShareItem`과
+    /// 같은 패턴.
+    private struct PhotoGalleryItem: Identifiable {
+        let id = UUID()
+        let startIndex: Int
+    }
+    @State private var photoGalleryItem: PhotoGalleryItem?
     @State private var isShowingThumbnailGrid = false
 
     @State private var isShowingFloorPlan = false
@@ -100,8 +113,7 @@ struct ProjectDetailView: View {
                         LazyVGrid(columns: columns, spacing: 4) {
                             ForEach(Array(rgbURLs.enumerated()), id: \.offset) { index, url in
                                 Button {
-                                    selectedPhotoIndex = index
-                                    isShowingPhotoGallery = true
+                                    photoGalleryItem = PhotoGalleryItem(startIndex: index)
                                 } label: {
                                     ThumbnailView(url: url)
                                 }
@@ -133,9 +145,9 @@ struct ProjectDetailView: View {
                     .toolbarBackground(.visible, for: .navigationBar)
             }
         }
-        .fullScreenCover(isPresented: $isShowingPhotoGallery) {
-            PhotoGalleryView(urls: rgbURLs, startIndex: selectedPhotoIndex) {
-                isShowingPhotoGallery = false
+        .fullScreenCover(item: $photoGalleryItem) { item in
+            PhotoGalleryView(urls: rgbURLs, startIndex: item.startIndex) {
+                photoGalleryItem = nil
             }
         }
         .fullScreenCover(isPresented: $isShowingLocalizeView) {
@@ -567,16 +579,20 @@ private struct ThumbnailView: View {
             let options: [CFString: Any] = [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceThumbnailMaxPixelSize: 200,
-                // false로 둔다: 이 앱은 raw(landscape) 그대로 저장하는 정책이라
-                // (poses.jsonl의 intrinsics도 raw 기준, Python 파이프라인도
-                // IMREAD_IGNORE_ORIENTATION으로 방향 태그를 무시함) EXIF 방향
-                // 태그를 "적용"하면 오히려 다르게(뒤집혀) 보인다.
+                // false로 둔다: 이 파일엔 EXIF 방향 태그 자체가 없으므로(raw(landscape)
+                // 그대로 저장하는 정책 -- poses.jsonl의 intrinsics도 raw 기준, Python
+                // 파이프라인도 IMREAD_IGNORE_ORIENTATION으로 읽음) 여기서 트랜스폼을
+                // 걸어도 아무 효과가 없다. 화면 표시용 회전은 아래
+                // forCapturedPhotoDisplay가 따로(디스크 바이트는 안 건드리고) 건다 --
+                // 2026-09-04 실기 확인: 이게 없으면 세로로 들고 찍은 사진이 90도
+                // 누워 보임(PhotoGalleryView.swift의 UIImage.forCapturedPhotoDisplay
+                // 주석 참고).
                 kCGImageSourceCreateThumbnailWithTransform: false,
             ]
             guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
                 return nil
             }
-            return UIImage(cgImage: cgImage)
+            return UIImage.forCapturedPhotoDisplay(cgImage: cgImage, orientation: .right)
         }.value
     }
 }

@@ -1,6 +1,27 @@
 import SwiftUI
 import UIKit
 
+extension UIImage {
+    /// 캡처된 사진(`rgb/*.jpg`)은 ARKit `capturedImage`의 raw(landscape) 버퍼를
+    /// 그대로 저장한다 -- Python 파이프라인이 `IMREAD_IGNORE_ORIENTATION`으로 읽는
+    /// 원본 픽셀과 완전히 일치해야 해서 디스크의 바이트 자체에는 회전/EXIF 보정을
+    /// 걸지 않는다(`FaceRedactor.swift` 상단 주석 참고). 문제는 이 앱이 세로로 들고
+    /// 스캔하는 게 일반적인 사용법이라서(`UIDevice.orientation`을 추적하는 코드가
+    /// 없어 실제 촬영 방향을 앱이 스스로는 모름 -- `FaceRedactor`가 그래서 얼굴
+    /// 검출을 두 orientation으로 다 시도하는 것과 같은 근본 원인), 화면에 그대로
+    /// 보여주면 사진이 90도 누워 보인다(2026-09-04 실기 확인).
+    ///
+    /// 디스크의 원본 바이트/픽셀은 전혀 건드리지 않고, "화면에 보여줄 때만"
+    /// `UIImage.imageOrientation` 메타데이터로 회전을 걸어(재인코딩 없음, `.size`도
+    /// 자동으로 회전 반영된 값을 돌려줌) 세워서 보여준다. 호출부가 `.right`(세로로
+    /// 들고 찍었을 때 보정 방향, `FaceRedactor`가 우선 시도하는 것과 같은 가정 --
+    /// 가로로 들고 스캔한 경우는 여전히 틀어져 보일 수 있음, 이 앱이 실제 촬영
+    /// 방향을 모르는 한 근본적인 한계)를 넘긴다.
+    static func forCapturedPhotoDisplay(cgImage: CGImage, orientation: UIImage.Orientation, scale: CGFloat = 1) -> UIImage {
+        UIImage(cgImage: cgImage, scale: scale, orientation: orientation)
+    }
+}
+
 /// 캡처된 사진을 전체화면으로 스와이프해서 넘겨보고, 각 사진은 핀치/더블탭으로
 /// 확대해서 볼 수 있다. `ProjectDetailView`의 "캡처된 사진 보기" 버튼으로 연다 —
 /// 얼굴 모자이크(deface, FaceRedactor)가 실제로 적용됐는지 확대해서 확인하기
@@ -25,7 +46,11 @@ struct PhotoGalleryView: View {
 
             TabView(selection: $currentIndex) {
                 ForEach(Array(urls.enumerated()), id: \.offset) { index, url in
-                    ZoomableImageView(url: url)
+                    // .right: 캡처된 사진(rgb/*.jpg)은 raw(landscape) 그대로 저장돼
+                    // 있어 화면 표시용으로만 회전 보정이 필요하다 -- forCapturedPhotoDisplay
+                    // 주석 참고. floorplan.png 같은 일반 이미지는 이 보정이 필요 없다
+                    // (FloorPlanViewerView는 기본값 .up으로 ZoomableImageView를 씀).
+                    ZoomableImageView(url: url, displayOrientation: .right)
                         .ignoresSafeArea()
                         .tag(index)
                 }
@@ -62,6 +87,10 @@ struct PhotoGalleryView: View {
 /// 표준 동작)을 쓴다 — 훨씬 적은 코드로 훨씬 자연스러운 결과를 얻는다.
 struct ZoomableImageView: UIViewRepresentable {
     let url: URL
+    /// 화면 표시용 회전 보정(디스크 바이트는 안 건드림). 캡처된 사진(rgb/*.jpg)은
+    /// `.right`(PhotoGalleryView 참고), floorplan.png처럼 원래부터 똑바른 일반
+    /// 이미지는 기본값 `.up`(보정 없음)을 쓴다.
+    var displayOrientation: UIImage.Orientation = .up
 
     func makeUIView(context: Context) -> UIScrollView {
         let scrollView = ZoomScrollView()
@@ -87,7 +116,11 @@ struct ZoomableImageView: UIViewRepresentable {
 
         // 원본 해상도 JPEG 디코딩을 메인 스레드에서 하지 않는다.
         DispatchQueue.global(qos: .userInitiated).async {
-            let image = UIImage(contentsOfFile: url.path)
+            let image = UIImage(contentsOfFile: url.path).flatMap { raw in
+                raw.cgImage.map {
+                    UIImage.forCapturedPhotoDisplay(cgImage: $0, orientation: displayOrientation, scale: raw.scale)
+                }
+            }
             DispatchQueue.main.async {
                 guard let image else { return }
                 imageView.image = image
