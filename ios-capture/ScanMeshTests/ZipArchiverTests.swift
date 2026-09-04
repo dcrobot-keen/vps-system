@@ -81,6 +81,33 @@ final class ZipArchiverTests: XCTestCase {
         let entries = try MinimalZipReader.readEntries(from: try Data(contentsOf: zipURL))
         XCTAssertEqual(entries.first?.name, "manifest.json")
     }
+
+    /// 프로젝트 zip에는 스캔 폴더들(접두사 붙음) 외에 정렬 파일(group_alignment.json)이
+    /// 접두사 없이 최상위에 들어간다 -- scan-to-map-studio의 merge_slicemaps.py가 zip을
+    /// 푼 자리에서 `scan_*/`와 나란히 그 파일을 찾는다.
+    func testExtraFilesLandAtTheRootNextToPrefixedFolders() throws {
+        let root = sourceDir.deletingLastPathComponent()
+        let dirA = root.appendingPathComponent("scan_A")
+        let dirB = root.appendingPathComponent("scan_B")
+        try FileManager.default.createDirectory(at: dirA, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: dirB, withIntermediateDirectories: true)
+        try Data("A".utf8).write(to: dirA.appendingPathComponent("manifest.json"))
+        try Data("B".utf8).write(to: dirB.appendingPathComponent("manifest.json"))
+        let alignment = Data("{\"format\":\"scan-group-alignment-v1\"}".utf8)
+
+        try ZipArchiver.zip(
+            directories: [dirA, dirB],
+            extraFiles: [.init(name: "group_alignment.json", data: alignment)],
+            to: zipURL
+        )
+
+        let entries = try MinimalZipReader.readEntries(from: try Data(contentsOf: zipURL))
+        let byName = Dictionary(uniqueKeysWithValues: entries.map { ($0.name, $0) })
+        XCTAssertEqual(entries.count, 3)
+        XCTAssertEqual(byName["scan_A/manifest.json"]?.data, Data("A".utf8))
+        XCTAssertEqual(byName["scan_B/manifest.json"]?.data, Data("B".utf8))
+        XCTAssertEqual(byName["group_alignment.json"]?.data, alignment)
+    }
 }
 
 /// `ZipArchiver`가 쓰는 것과 정확히 같은 최소 포맷(로컬 헤더 연속, store 방식, 압축

@@ -49,6 +49,43 @@ raw binary float32, row-major, 고정 `(192, 256)` = `(height, width)`, 헤더 �
 
 LiDAR 메시. **`scan-to-map-studio`는 이 파일만 쓰고 `manifest.json`/`poses.jsonl`/`depth/`는 전혀 읽지 않는다**(코드로 직접 확인, 2026-08-29) — 그래서 이 저장소의 `scan-format/` 사본에는 `conformance_check.py`가 없다(검증할 것 자체가 없다).
 
+## 프로젝트 zip (여러 스캔을 한 번에 내보낼 때)
+
+ios-capture가 프로젝트(여러 스캔 묶음) 단위로 내보내는 zip은 스캔 폴더 하나짜리 zip과
+두 가지가 다르다.
+
+1. 스캔 폴더마다 자기 이름이 최상위 접두사로 붙는다: `scan_A/rgb/...`, `scan_B/rgb/...`.
+   폴더 하나만 내보낼 때는 접두사 없이 `rgb/`, `depth/`, `poses/`가 최상위다(이전과 동일).
+2. 최상위에 `group_alignment.json`(포맷 `scan-group-alignment-v1`)이 하나 들어간다.
+   스캔마다 기준 스캔 좌표계로 옮기는 강체 변환이다.
+
+```json
+{
+  "format": "scan-group-alignment-v1",
+  "group": "우리집 1층",
+  "reference": "scan_20260904_210428",
+  "up_axis_convention": "top = -z",
+  "alignments": {
+    "scan_20260904_210551": { "offsetX": 3.412, "offsetZ": -1.087, "yawRadians": -0.1047, "method": "app" },
+    "scan_20260904_210652": { "offsetX": 0, "offsetZ": 0, "yawRadians": 0, "method": "identity" }
+  }
+}
+```
+
+- `reference`는 그룹의 첫 스캔이며 항상 identity라 `alignments`에 들어가지 않는다.
+  나머지 스캔은 정렬 여부와 관계없이 전부 들어간다.
+- 변환은 ARKit 지면 평면 (x, z)에서 "회전 후 이동"이다(`ScanAlignment.applyXZ`):
+  `x' = x·cos(yaw) + z·sin(yaw) + offsetX`, `z' = −x·sin(yaw) + z·cos(yaw) + offsetZ`.
+  scan-to-map-studio의 Z-up 평면에서는 `(x, y) = (x, −z)`이므로 같은 변환이
+  "yaw만큼 반시계 회전 + (offsetX, −offsetZ) 이동"이 된다. 이 대응은
+  `studio/merge_slicemaps.py` 한 곳에서만 처리한다.
+- `method`: 앱이 내보낼 때는 `app`(사용자가 정렬 화면이나 앵커링으로 놓은 값) 또는
+  `identity`(정렬한 적 없음). 데스크탑 정합 도구가 값을 고치면 `pins`, `icp`, `manual`
+  등으로 바뀌고 `metrics`(inlier, conflict, rmse_m, overlap_m)가 붙을 수 있다.
+- 소비자: scan-to-map-studio `scripts/merge_slicemaps.py`(스캔별 slicemap을 이 변환으로 한
+  격자에 합성). 이 파일은 그 저장소의 `tests/test_merge_slicemaps.py`와 이 저장소의
+  `GroupAlignmentExportTests`가 양쪽에서 고정한다.
+
 ## 검증
 
 같은 폴더의 `conformance_check.py`로 최소 구조/필드 유효성을 확인할 수 있다(단, `manifest.json`/`poses.jsonl`을 실제로 읽는 저장소, 즉 `vps-system`과 `dc-vps-digital-twin`에서만 유의미하다):

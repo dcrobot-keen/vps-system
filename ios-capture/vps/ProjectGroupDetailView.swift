@@ -284,12 +284,17 @@ struct ProjectGroupDetailView: View {
         }
         let projectName = group.name
         guard !scans.isEmpty else { return }
+        // 프로젝트 zip에 같이 들어가는 정렬 파일(scan-group-alignment-v1). 만들기에 실패해도
+        // 스캔 데이터 export 자체는 막지 않는다 -- 정렬은 데스크탑에서 다시 만들 수 있다.
+        let alignmentJSON = (try? GroupAlignmentExport.data(for: group)) ?? nil
 
         isExporting = true
         exportErrorMessage = nil
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                let destURL = try Self.buildExportFile(format: format, scans: scans, projectName: projectName)
+                let destURL = try Self.buildExportFile(
+                    format: format, scans: scans, projectName: projectName, alignmentJSON: alignmentJSON
+                )
                 DispatchQueue.main.async {
                     isExporting = false
                     exportShareItem = ShareItem(url: destURL)
@@ -304,7 +309,7 @@ struct ProjectGroupDetailView: View {
     }
 
     private static func buildExportFile(
-        format: ExportFormat, scans: [ScanGroupMerger.ScanInput], projectName: String
+        format: ExportFormat, scans: [ScanGroupMerger.ScanInput], projectName: String, alignmentJSON: Data? = nil
     ) throws -> URL {
         let tempDir = FileManager.default.temporaryDirectory
         // 프로젝트 이름은 자유 텍스트라(경로 구분자 등도 입력 가능) 파일 이름으로
@@ -324,7 +329,11 @@ struct ProjectGroupDetailView: View {
         switch format {
         case .zip:
             let url = fresh("zip")
-            try ZipArchiver.zip(directories: scans.map(\.folderURL), to: url)
+            var extras: [ZipArchiver.ExtraFile] = []
+            if let alignmentJSON {
+                extras.append(.init(name: GroupAlignmentExport.fileName, data: alignmentJSON))
+            }
+            try ZipArchiver.zip(directories: scans.map(\.folderURL), extraFiles: extras, to: url)
             return url
 
         case .ply:

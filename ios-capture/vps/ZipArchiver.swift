@@ -8,8 +8,19 @@ enum ZipArchiver {
         case enumerationFailed
     }
 
+    /// 폴더 밖에서 만들어 zip 최상위에 끼워 넣는 파일(예: 프로젝트 정렬 파일
+    /// `group_alignment.json`). 디스크에 먼저 쓸 필요 없이 바이트를 바로 넣는다.
+    struct ExtraFile: Equatable {
+        let name: String
+        let data: Data
+    }
+
     static func zip(directory: URL, to destinationURL: URL) throws {
         try zip(directories: [directory], to: destinationURL)
+    }
+
+    static func zip(directories: [URL], to destinationURL: URL) throws {
+        try zip(directories: directories, extraFiles: [], to: destinationURL)
     }
 
     /// 여러 폴더를 한 zip에 합친다 -- 폴더가 2개 이상이면 각자 자기 이름을 최상위
@@ -18,7 +29,8 @@ enum ZipArchiver {
     /// (ScanGroupStore 참고) zip을 만들 때만 이렇게 논리적으로 묶는다. 폴더가 하나뿐이면
     /// (기존 `zip(directory:to:)` 호출) 지금까지와 완전히 같게 접두사 없이 그대로
     /// 씀 -- VPSUploadClient 등 기존 소비자가 최상위에 rgb/depth/poses를 그대로 기대함.
-    static func zip(directories: [URL], to destinationURL: URL) throws {
+    /// `extraFiles`는 접두사 없이 zip 최상위에 폴더들 뒤에 이어 쓴다.
+    static func zip(directories: [URL], extraFiles: [ExtraFile], to destinationURL: URL) throws {
         let fm = FileManager.default
         if fm.fileExists(atPath: destinationURL.path) {
             try fm.removeItem(at: destinationURL)
@@ -31,6 +43,53 @@ enum ZipArchiver {
         var offset: UInt32 = 0
         var entryCount: UInt16 = 0
         let usesPrefix = directories.count > 1
+
+        func writeEntry(name: String, data fileData: Data, dosTime: UInt16, dosDate: UInt16) {
+            let crc = CRC32.checksum(fileData)
+            let nameBytes = Array(name.utf8)
+
+            var localHeader = Data()
+            localHeader.append(uint32: 0x0403_4b50)
+            localHeader.append(uint16: 20) // version needed to extract
+            localHeader.append(uint16: 0) // flags
+            localHeader.append(uint16: 0) // method: store
+            localHeader.append(uint16: dosTime)
+            localHeader.append(uint16: dosDate)
+            localHeader.append(uint32: crc)
+            localHeader.append(uint32: UInt32(fileData.count))
+            localHeader.append(uint32: UInt32(fileData.count))
+            localHeader.append(uint16: UInt16(nameBytes.count))
+            localHeader.append(uint16: 0) // extra field length
+            localHeader.append(contentsOf: nameBytes)
+
+            handle.write(localHeader)
+            handle.write(fileData)
+
+            var centralEntry = Data()
+            centralEntry.append(uint32: 0x0201_4b50)
+            centralEntry.append(uint16: 20) // version made by
+            centralEntry.append(uint16: 20) // version needed to extract
+            centralEntry.append(uint16: 0) // flags
+            centralEntry.append(uint16: 0) // method
+            centralEntry.append(uint16: dosTime)
+            centralEntry.append(uint16: dosDate)
+            centralEntry.append(uint32: crc)
+            centralEntry.append(uint32: UInt32(fileData.count))
+            centralEntry.append(uint32: UInt32(fileData.count))
+            centralEntry.append(uint16: UInt16(nameBytes.count))
+            centralEntry.append(uint16: 0) // extra field length
+            centralEntry.append(uint16: 0) // comment length
+            centralEntry.append(uint16: 0) // disk number start
+            centralEntry.append(uint16: 0) // internal attrs
+            centralEntry.append(uint32: 0) // external attrs
+            centralEntry.append(uint32: offset)
+            centralEntry.append(contentsOf: nameBytes)
+
+            centralDirectory.append(centralEntry)
+
+            offset += UInt32(localHeader.count + fileData.count)
+            entryCount += 1
+        }
 
         for directory in directories {
             guard let enumerator = fm.enumerator(
@@ -56,52 +115,14 @@ enum ZipArchiver {
                 let resolvedComponents = fileURL.resolvingSymlinksInPath().pathComponents
                 let relativePath = entryPrefix + resolvedComponents.dropFirst(baseComponents.count).joined(separator: "/")
                 let fileData = try Data(contentsOf: fileURL)
-                let crc = CRC32.checksum(fileData)
-                let nameBytes = Array(relativePath.utf8)
                 let (dosTime, dosDate) = dosDateTime(for: fileURL)
-
-                var localHeader = Data()
-                localHeader.append(uint32: 0x0403_4b50)
-                localHeader.append(uint16: 20) // version needed to extract
-                localHeader.append(uint16: 0) // flags
-                localHeader.append(uint16: 0) // method: store
-                localHeader.append(uint16: dosTime)
-                localHeader.append(uint16: dosDate)
-                localHeader.append(uint32: crc)
-                localHeader.append(uint32: UInt32(fileData.count))
-                localHeader.append(uint32: UInt32(fileData.count))
-                localHeader.append(uint16: UInt16(nameBytes.count))
-                localHeader.append(uint16: 0) // extra field length
-                localHeader.append(contentsOf: nameBytes)
-
-                handle.write(localHeader)
-                handle.write(fileData)
-
-                var centralEntry = Data()
-                centralEntry.append(uint32: 0x0201_4b50)
-                centralEntry.append(uint16: 20) // version made by
-                centralEntry.append(uint16: 20) // version needed to extract
-                centralEntry.append(uint16: 0) // flags
-                centralEntry.append(uint16: 0) // method
-                centralEntry.append(uint16: dosTime)
-                centralEntry.append(uint16: dosDate)
-                centralEntry.append(uint32: crc)
-                centralEntry.append(uint32: UInt32(fileData.count))
-                centralEntry.append(uint32: UInt32(fileData.count))
-                centralEntry.append(uint16: UInt16(nameBytes.count))
-                centralEntry.append(uint16: 0) // extra field length
-                centralEntry.append(uint16: 0) // comment length
-                centralEntry.append(uint16: 0) // disk number start
-                centralEntry.append(uint16: 0) // internal attrs
-                centralEntry.append(uint32: 0) // external attrs
-                centralEntry.append(uint32: offset)
-                centralEntry.append(contentsOf: nameBytes)
-
-                centralDirectory.append(centralEntry)
-
-                offset += UInt32(localHeader.count + fileData.count)
-                entryCount += 1
+                writeEntry(name: relativePath, data: fileData, dosTime: dosTime, dosDate: dosDate)
             }
+        }
+
+        let (nowTime, nowDate) = dosDateTime(Date())
+        for extra in extraFiles {
+            writeEntry(name: extra.name, data: extra.data, dosTime: nowTime, dosDate: nowDate)
         }
 
         let centralDirectoryOffset = offset
@@ -122,6 +143,10 @@ enum ZipArchiver {
 
     private static func dosDateTime(for url: URL) -> (UInt16, UInt16) {
         let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date()
+        return dosDateTime(date)
+    }
+
+    private static func dosDateTime(_ date: Date) -> (UInt16, UInt16) {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone.current
         let comps = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
