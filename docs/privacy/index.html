@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>개인정보 처리방침 / Privacy Policy</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; max-width: 720px; margin: 0 auto; padding: 40px 20px 80px; line-height: 1.7; color: #1b2226; }
+  h1 { font-size: 1.6rem; margin-bottom: 4px; }
+  h2 { font-size: 1.2rem; margin-top: 2.5rem; }
+  .updated { color: #666; font-size: 0.9rem; margin-bottom: 2rem; }
+  .lang-divider { border-top: 2px solid #ddd; margin: 4rem 0 2rem; }
+  ul { padding-left: 1.3rem; }
+  code { background: #f0f0f0; padding: 1px 5px; border-radius: 3px; font-size: 0.9em; }
+  .todo { background: #fff3cd; border: 1px solid #ffe69c; padding: 10px 14px; border-radius: 4px; font-size: 0.9rem; }
+</style>
+</head>
+<body>
+
+<p class="todo">
+  <strong>편집 메모(공개 전 확인):</strong> 이 페이지의 "문의" 이메일 주소와 앱 정식 이름/번들 ID를
+  최종 확정값으로 교체할 것 — App Store Connect 제출 전에 반드시 채워야 함.
+</p>
+
+<h1>개인정보 처리방침</h1>
+<p class="updated">최종 수정일: 2026-09-04</p>
+
+<p>이 앱(이하 "앱")은 iPhone/iPad의 LiDAR 센서로 실내 공간을 스캔해서 3D 메시와 사진으로
+남기는 도구입니다. 이 문서는 앱이 어떤 데이터를 다루고, 그 데이터가 어디에 저장되며,
+누구에게 전달되는지(또는 전달되지 않는지)를 설명합니다.</p>
+
+<h2>앱이 만드는 데이터</h2>
+<p>스캔을 시작하면 앱은 다음을 기기에 저장합니다:</p>
+<ul>
+  <li>카메라로 찍은 사진(RGB)</li>
+  <li>LiDAR 깊이 정보(depth)와 신뢰도(confidence) 맵</li>
+  <li>기기의 위치/방향 추정치(ARKit pose)</li>
+  <li>위 데이터로 만든 3D 메시(<code>scan.usdz</code>)</li>
+</ul>
+<p>이 데이터는 전부 <strong>기기 안(앱의 Documents 폴더)에만</strong> 저장됩니다.
+앱을 만든 개발자는 이 데이터를 서버로 자동 전송받지 않으며, 사용자가 직접
+삭제(앱 안에서 스캔 삭제, 또는 Files 앱에서 폴더 삭제)하기 전까지 기기에만 남아 있습니다.</p>
+
+<h2>사람 얼굴 처리 — 온디바이스 자동 모자이크</h2>
+<p>공용 공간을 스캔하다 보면 사람이 프레임에 찍히는 걸 완전히 피하기 어렵습니다.
+앱은 사진을 저장하기 <strong>전에</strong> Apple의 Vision 프레임워크로 얼굴을 감지해
+자동으로 모자이크 처리합니다. 이 처리는 전부 기기 안에서 이루어지며, 얼굴 인식을 위해
+어떤 데이터도 외부로 전송되지 않습니다. 단, 자동 감지는 완벽하지 않을 수 있습니다(각도,
+조명, 거리에 따라 일부 얼굴을 놓칠 수 있음).</p>
+
+<h2>카메라 권한</h2>
+<p>앱은 스캔 기능을 위해 카메라 접근 권한을 요청합니다. 이 권한은 스캔 중 사진과
+깊이 정보를 캡처하는 데만 사용되며, 사용자가 스캔을 시작할 때만 카메라가 활성화됩니다.</p>
+
+<h2>고급 모드 — 선택적 서버 업로드</h2>
+<p>앱 설정에는 기본적으로 꺼져 있는 "고급 모드"가 있습니다. 이 모드를 사용자가
+직접 켜고, 사용자가 직접 서버 주소를 입력한 경우에만 앱은 스캔 데이터를 그
+주소로 전송합니다. 이 기능은 일반 사용자를 위한 것이 아니라 자체 인프라(같은
+네트워크에 있는 서버)를 운영하는 사용자를 위한 것이며:</p>
+<ul>
+  <li>기본 상태에서는 어떤 데이터도 어디로도 전송되지 않습니다.</li>
+  <li>앱을 만든 개발자가 운영하는 기본 서버는 없습니다 — 사용자가 입력한 주소로만 전송됩니다.</li>
+  <li>이 기능을 쓰지 않아도 앱의 모든 핵심 기능(스캔, 3D 보기, 사진 확인, 내보내기)은
+    제한 없이 동작합니다.</li>
+</ul>
+
+<h2>제3자 서비스</h2>
+<p>앱은 광고 SDK, 분석(analytics) SDK, 소셜 로그인 등 제3자 서비스를 포함하지 않습니다.
+사용자 계정이나 로그인 기능이 없습니다.</p>
+
+<h2>데이터 공유</h2>
+<p>앱은 사용자의 스캔 데이터, 사진, 위치 정보를 개발자나 제3자와 공유하지 않습니다.
+사용자가 직접 파일 공유 기능(Files 앱, 공유 시트)으로 데이터를 내보내는 경우는
+사용자 본인의 조작이며, 이 방침의 범위 밖입니다.</p>
+
+<h2>데이터 삭제</h2>
+<p>앱 안에서 개별 스캔을 삭제하거나, iOS의 Files 앱에서 앱의 문서 폴더에 접근해
+파일을 직접 관리/삭제할 수 있습니다. 앱을 기기에서 삭제하면 관련 데이터도 함께 삭제됩니다.</p>
+
+<h2>아동 개인정보</h2>
+<p>앱은 특정 연령층을 대상으로 하지 않으며, 만 13세 미만 아동으로부터 의도적으로
+개인정보를 수집하지 않습니다.</p>
+
+<h2>이 방침의 변경</h2>
+<p>앱 기능이 추가되거나 바뀌면 이 방침도 갱신됩니다. 변경 시 이 페이지의 "최종
+수정일"을 업데이트합니다.</p>
+
+<h2>문의</h2>
+<p>이 방침이나 앱의 개인정보 처리에 대해 문의할 사항이 있으면
+<a href="mailto:PLACEHOLDER@example.com">PLACEHOLDER@example.com</a>으로 연락해 주세요.</p>
+
+<div class="lang-divider"></div>
+
+<h1>Privacy Policy</h1>
+<p class="updated">Last updated: 2026-09-04</p>
+
+<p>This app (the "App") uses your iPhone's or iPad's LiDAR sensor to scan indoor
+spaces into 3D meshes and photos. This document explains what data the App
+handles, where it's stored, and who it's shared with (or, mostly, isn't).</p>
+
+<h2>Data the App Creates</h2>
+<p>When you start a scan, the App stores the following on your device:</p>
+<ul>
+  <li>Photos taken by the camera (RGB)</li>
+  <li>LiDAR depth and confidence maps</li>
+  <li>Device position/orientation estimates (ARKit pose)</li>
+  <li>A 3D mesh built from the above (<code>scan.usdz</code>)</li>
+</ul>
+<p>All of this data is stored <strong>only on your device</strong>, in the App's
+own Documents folder. The developer does not automatically receive this data on
+any server. It stays on your device until you delete it yourself (either by
+deleting a scan in the App, or by deleting the folder via the Files app).</p>
+
+<h2>Face Handling — On-Device Automatic Blurring</h2>
+<p>When scanning shared spaces, it can be hard to avoid capturing people in frame.
+Before a photo is saved, the App uses Apple's Vision framework to detect faces
+and automatically blurs them. This processing happens entirely on-device — no
+data is sent anywhere for face detection. Automatic detection is not perfect and
+may miss some faces depending on angle, lighting, or distance.</p>
+
+<h2>Camera Permission</h2>
+<p>The App requests camera access to perform scans. This permission is used only
+to capture photos and depth data during an active scan, and the camera is only
+active while you are scanning.</p>
+
+<h2>Advanced Mode — Optional Server Upload</h2>
+<p>Settings includes an "Advanced Mode" toggle that is off by default. Only when
+a user turns it on and manually enters a server address does the App send scan
+data to that address. This feature exists for users running their own
+infrastructure (a server on their own network), not for general use:</p>
+<ul>
+  <li>By default, no data is sent anywhere.</li>
+  <li>There is no default server operated by the developer — data is sent only
+    to whatever address the user types in.</li>
+  <li>All core features of the App (scanning, 3D viewing, photo review,
+    exporting) work fully without ever enabling this feature.</li>
+</ul>
+
+<h2>Third-Party Services</h2>
+<p>The App does not include advertising SDKs, analytics SDKs, or social login.
+There is no user account or sign-in system.</p>
+
+<h2>Data Sharing</h2>
+<p>The App does not share your scan data, photos, or location information with
+the developer or any third party. If you use iOS's own share sheet or Files app
+to export your data, that is your own action and outside the scope of this
+policy.</p>
+
+<h2>Data Deletion</h2>
+<p>You can delete individual scans from within the App, or manage/delete files
+directly through the iOS Files app. Deleting the App from your device removes
+its associated data.</p>
+
+<h2>Children's Privacy</h2>
+<p>The App is not directed at any specific age group and does not knowingly
+collect personal information from children under 13.</p>
+
+<h2>Changes to This Policy</h2>
+<p>This policy will be updated if the App's features change. The "Last updated"
+date above will reflect any changes.</p>
+
+<h2>Contact</h2>
+<p>If you have questions about this policy or how the App handles your data,
+contact <a href="mailto:PLACEHOLDER@example.com">PLACEHOLDER@example.com</a>.</p>
+
+</body>
+</html>
