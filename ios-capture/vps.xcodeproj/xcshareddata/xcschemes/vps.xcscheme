@@ -2,14 +2,6 @@
 <Scheme
    LastUpgradeVersion = "2660"
    version = "1.7">
-   <!--
-     Xcode에는 원래 스킴이 커밋되어 있지 않았다(사용자별 xcuserdata에만 자동 생성).
-     GitHub Actions 같은 CI는 사람이 없어서 그 자동 스킴을 못 만들고, `-scheme`으로
-     지정할 이름 자체가 없으면 xcodebuild가 빌드할 대상을 못 고른다 -- 그래서 이
-     shared scheme을 직접 만들어 커밋했다(App Store 제품화 CI 착수, 2026-09-04).
-     vpsTests 타깃이 Xcode에서 만들어지면 TestAction에 Testables 항목을 추가해야
-     한다(지금은 타깃 자체가 없어 비워둠 -- PRODUCT-PLAN.md 참고).
-   -->
    <BuildAction
       parallelizeBuildables = "YES"
       buildImplicitDependencies = "YES">
