@@ -44,10 +44,10 @@
 - [ ] 심사 노트: 서버 없이 전체 플로우 데모 가능함을 명시, LiDAR 기기 필요 명시
 
 ### B. 실기 검증 (맥 + LiDAR 기기 필요)
-- [ ] 이번에 넣은 기능: deface(orientation 수정 후 재검증, `[deface]` 로그 확인), 위치 확인(ARWorldMap), 사진 갤러리
-- [ ] 배포 타깃 17.0으로 내린 뒤 빌드 통과 확인 (availability 에러 나면 그 API만 처리)
-- [ ] `INFOPLIST_FILE=Info.plist` + `GENERATE_INFOPLIST_FILE=YES` 병합이 정상인지(키 중복 에러 없음)
-- [ ] 발열/프레임 드롭: 긴 스캔(5분+)에서 `thermalState` 관찰
+- [x] **맥 + 실기기 빌드 성공 확인(2026-09-04)** — 배포 타깃 17.0 하향, `INFOPLIST_FILE=Info.plist` + `GENERATE_INFOPLIST_FILE=YES` 병합 둘 다 실기기 빌드로 통과(CI의 시뮬레이터 빌드보다 더 강한 확인). availability 에러 없음.
+- [x] **deface 실기 검증(2026-09-04) — 두 orientation 검출로 바꾼 수정이 실제로 얼굴을 잡음.** 확인됨.
+- [ ] 위치 확인(ARWorldMap), 사진 갤러리 — 아직 실기 확인 안 됨
+- [ ] 발열/프레임 드롭: 긴 스캔(5분+)에서 `thermalState` 관찰(방금 넣은 캡처 루프 오프로딩 + 발열 안내가 실제로 도움이 되는지)
 
 ### C. 엔지니어링 품질
 - [x] **스캔 포맷 회귀 게이트, XCTest 부분** — `manifest.json`/`poses.jsonl`을 만드는 로직을 순수 함수로 뽑아낸 `ScanRecordBuilder.swift`(ARFrame 의존 제거, `ScanSessionManager`가 그대로 씀)를 만들고, `vpsTests/ScanFormatConformanceTests.swift`가 `vps-system/scan-format/*.schema.json`(정본)을 직접 읽어 그 출력과 대조(필수 키·타입, `tracking_state` enum까지). 대조기는 `MiniSchemaValidator.swift`(이 두 스키마에 필요한 만큼만 지원하는 좁은 서브셋)
