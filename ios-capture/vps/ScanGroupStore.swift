@@ -75,6 +75,26 @@ struct ScanAlignment: Codable, Equatable {
         let c = cos(yawRadians), s = sin(yawRadians)
         return (x * c + z * s + offsetX, -x * s + z * c + offsetZ)
     }
+
+    /// 방향 벡터(위치 아님 -- 이동은 안 하고 회전만).
+    func rotateXZ(x: Float, z: Float) -> (x: Float, z: Float) {
+        let c = cos(yawRadians), s = sin(yawRadians)
+        return (x * c + z * s, -x * s + z * c)
+    }
+
+    /// 같은 변환을 GroundPose(scan-to-map-studio 평면 관례, X = x, Y = -z) 위에서.
+    /// `applyXZ`와 수학적으로 같은 변환이어야 한다(ScanAlignmentTests가 대조) --
+    /// Y = -z로 바꾸면 yaw 회전은 (X, Y) 평면에서 반시계 +yaw 회전이 되고 heading도
+    /// +yaw만큼 돈다. 프로젝트 단위 위치 확인이 "스캔 k 지도에서 잡은 pose"를 기준
+    /// 스캔 좌표계로 옮기는 데 쓴다.
+    func applyGroundPose(_ pose: GroundPose) -> GroundPose {
+        let c = Double(cos(yawRadians)), s = Double(sin(yawRadians))
+        return GroundPose(
+            x: pose.x * c - pose.y * s + Double(offsetX),
+            y: pose.x * s + pose.y * c - Double(offsetZ),
+            headingRad: pose.headingRad + Double(yawRadians)
+        )
+    }
 }
 
 @MainActor

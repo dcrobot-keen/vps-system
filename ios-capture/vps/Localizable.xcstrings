@@ -768,6 +768,46 @@
           }
         }
       }
+    },
+    "지도": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Map"
+          }
+        }
+      }
+    },
+    "자동 순환": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto-cycle"
+          }
+        }
+      }
+    },
+    "(자동 순환)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(auto-cycle)"
+          }
+        }
+      }
+    },
+    "프로젝트 기준 좌표": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Project coordinates"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -26,6 +26,26 @@ final class ScanAlignmentTests: XCTestCase {
         XCTAssertEqual(z, -1, accuracy: 1e-5)
     }
 
+    /// GroundPose(Y = -z) 경로와 world (x, z) 경로가 같은 점을 같은 곳으로 보내야 한다 --
+    /// 위치 확인(GroundPose)과 합치기/정렬 화면(x, z)이 서로 다른 변환을 쓰면 위치가
+    /// 지도 위에서 어긋난다.
+    func testApplyGroundPoseAgreesWithApplyXZ() {
+        let a = ScanAlignment(offsetX: 1.5, offsetZ: -2, yawRadians: 0.7)
+        let (x, z): (Float, Float) = (3, 4)
+        let viaXZ = a.applyXZ(x: x, z: z)
+        let viaGround = a.applyGroundPose(GroundPose(x: Double(x), y: Double(-z), headingRad: 0))
+        XCTAssertEqual(viaGround.x, Double(viaXZ.x), accuracy: 1e-4)
+        XCTAssertEqual(viaGround.y, Double(-viaXZ.z), accuracy: 1e-4)
+        XCTAssertEqual(viaGround.headingRad, 0.7, accuracy: 1e-6)
+    }
+
+    func testRotateXZDoesNotTranslate() {
+        let a = ScanAlignment(offsetX: 100, offsetZ: 100, yawRadians: .pi / 2)
+        let (x, z) = a.rotateXZ(x: 1, z: 0)
+        XCTAssertEqual(x, 0, accuracy: 1e-5)
+        XCTAssertEqual(z, -1, accuracy: 1e-5)
+    }
+
     func testRotationIsAppliedBeforeOffset() {
         // 회전 후 이동이어야 한다: (1,0)을 90도 돌리면 (0,-1), 거기에 offset(5,5)를 더해 (5,4).
         let a = ScanAlignment(offsetX: 5, offsetZ: 5, yawRadians: .pi / 2)

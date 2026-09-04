@@ -12,6 +12,7 @@ struct ProjectGroupDetailView: View {
 
     @State private var isShowingAlignment = false
     @State private var isShowingMergedViewer = false
+    @State private var isShowingLocalize = false
     @State private var isExporting = false
     @State private var exportShareItem: ShareItem?
     @State private var exportErrorMessage: String?
@@ -114,6 +115,13 @@ struct ProjectGroupDetailView: View {
                         }
                         .disabled(!scansInGroup.contains { $0.hasUSDZ })
 
+                        Button {
+                            isShowingLocalize = true
+                        } label: {
+                            Label("위치 확인 (서버 없이)", systemImage: "location.viewfinder")
+                        }
+                        .disabled(!scansInGroup.contains { $0.hasWorldMap })
+
                         Menu {
                             ForEach(ExportFormat.allCases) { format in
                                 Button(format.label) { exportMerged(as: format) }
@@ -146,6 +154,11 @@ struct ProjectGroupDetailView: View {
         .fullScreenCover(isPresented: $isShowingMergedViewer) {
             MergedMeshViewer(scans: mergeInputs) { isShowingMergedViewer = false }
         }
+        .fullScreenCover(isPresented: $isShowingLocalize) {
+            NavigationStack {
+                LocalizeView(candidates: localizeCandidates)
+            }
+        }
         .sheet(item: $exportShareItem) { item in
             ShareSheet(activityItems: [item.url])
         }
@@ -172,6 +185,17 @@ struct ProjectGroupDetailView: View {
         guard let group else { return [] }
         return scansInGroup.map {
             ScanGroupMerger.ScanInput(folderURL: $0.url, alignment: group.alignment(for: $0.id))
+        }
+    }
+
+    /// 프로젝트 단위 위치 확인용 -- 지도(worldmap)가 있는 스캔만, 정렬 변환 포함.
+    private var localizeCandidates: [LocalizeCandidate] {
+        guard let group else { return [] }
+        return scansInGroup.enumerated().compactMap { index, scan in
+            guard scan.hasWorldMap else { return nil }
+            return LocalizeCandidate(
+                id: scan.id, label: "스캔 \(index + 1)", folderURL: scan.url, alignment: group.alignment(for: scan.id)
+            )
         }
     }
 
