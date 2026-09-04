@@ -10,12 +10,10 @@ struct DCVPSCaptureApp: App {
     var body: some Scene {
         WindowGroup {
             if DeviceSupport.isScanningSupported {
-                TabView {
-                    ProjectGroupListView()
-                        .tabItem { Label("프로젝트", systemImage: "camera.viewfinder") }
-                    ImportedFilesView()
-                        .tabItem { Label("가져온 파일", systemImage: "square.and.arrow.down") }
-                }
+                // 화면이 프로젝트 목록 하나뿐이라 탭 바를 두지 않는다 -- "가져온 파일"
+                // (외부 3D 파일 뷰어, 스캔 흐름과 무관)은 목록의 ⋯ 메뉴에서 시트로 연다
+                // (2026-09-04 IA 검토).
+                ProjectGroupListView()
             } else {
                 // LiDAR 없는 기기 -- 스캔이 앱의 전부라 뷰어만 남기는 것보다 이유를
                 // 정확히 알려주는 쪽이 낫다(App Store 심사 요건이기도 함).

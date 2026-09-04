@@ -7,22 +7,94 @@ import Foundation
 /// `Documents/scan_groups.json`에 그룹 정보(이름 + 속한 scan_<name> 폴더 이름 목록)만
 /// 가벼운 인덱스로 따로 둔다.
 ///
-/// "합치기"는 정합(registration) 알고리즘 없이 이어서 스캔하는 방식으로 한다
-/// (2026-09-04 결정) -- 그룹의 첫 스캔 이후로는 그 스캔이 저장한
-/// `worldmap.arexperience`를 `initialWorldMap`으로 불러와 같은 좌표계에서 캡처하므로,
-/// 그룹 안의 스캔들은 이미 하나의 world 좌표계를 공유한다(ScanSessionManager.startSession
-/// 참고). 그래서 "합치기"는 각 스캔의 mesh/포즈를 그대로 이어붙이기만 하면 된다
-/// (ScanGroupMerger 참고).
+/// 스캔들은 각자 따로(독립된 ARKit 세션, 따라서 각자 다른 world 원점) 찍고 나중에
+/// 합친다(2026-09-04 결정 -- 처음엔 이전 스캔의 worldmap을 이어받는 "이어서 스캔"으로
+/// 했는데 실사용에서 어색해서 바꿈). 그래서 합칠 때 스캔마다 정렬 변환(`ScanAlignment`)이
+/// 필요하고, 그건 `ScanAlignmentView`에서 사용자가 위에서 내려다본 2D 화면으로 직접
+/// 맞춘다. 중력 방향(Y)은 ARKit이 세션마다 항상 맞춰주고 바닥 높이는 floorplan.json에
+/// 있어서, 사용자가 맞출 건 평면 위치(x, z)와 회전(yaw)뿐이다.
 struct ScanGroup: Identifiable, Codable, Equatable {
     let id: String
     var name: String
-    /// 캡처한 순서 그대로 -- 첫 항목이 그룹의 좌표계 기준(worldmap 원본)이 된다.
+    /// 캡처한 순서 그대로, 각 항목은 scan_<name> 폴더 이름 전체(= `ScanProject.id`).
+    /// 첫 항목이 합칠 때의 기준 좌표계(정렬 변환 없이 그대로)가 된다.
     var scanIDs: [String]
     let createdAt: Date
+    /// scanID -> 그 스캔을 기준 스캔의 좌표계로 옮기는 변환. 없으면 identity.
+    var alignments: [String: ScanAlignment]
 
-    /// 다음 스캔이 "이어서 찍기"용으로 불러올 worldmap -- 그룹의 마지막 스캔 것을 쓴다
-    /// (제일 최근까지 갱신된 특징점 맵이라 재국지화가 더 잘 될 가능성이 높음).
     var latestScanID: String? { scanIDs.last }
+
+    init(id: String, name: String, scanIDs: [String], createdAt: Date, alignments: [String: ScanAlignment] = [:]) {
+        self.id = id
+        self.name = name
+        self.scanIDs = scanIDs
+        self.createdAt = createdAt
+        self.alignments = alignments
+    }
+
+    func alignment(for scanID: String) -> ScanAlignment {
+        alignments[scanID] ?? .identity
+    }
+
+    // alignments는 나중에 추가된 필드라, 그 전에 저장된 scan_groups.json에는 키 자체가
+    // 없다 -- 없으면 빈 딕셔너리로 읽는다(합성 Codable은 키가 없으면 실패함).
+    private enum CodingKeys: String, CodingKey {
+        case id, name, scanIDs, createdAt, alignments
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        scanIDs = try c.decode([String].self, forKey: .scanIDs)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        alignments = try c.decodeIfPresent([String: ScanAlignment].self, forKey: .alignments) ?? [:]
+    }
+}
+
+/// 스캔 하나를 그룹의 기준 좌표계로 옮기는 강체 변환(평면 위치 + yaw). 수직(Y)
+/// 오프셋은 여기 없다 -- 합칠 때 두 스캔의 바닥 높이(floorplan.json의
+/// floor_height_min)를 맞춰서 자동으로 채운다(ScanGroupMerger).
+///
+/// 적용 순서: 먼저 Y축 기준 yaw 회전, 그다음 (offsetX, offsetZ) 이동. 이 공식 하나를
+/// 합치기(3D)와 정렬 화면(2D 미리보기)이 똑같이 써야 미리보기가 결과와 일치한다.
+struct ScanAlignment: Codable, Equatable {
+    var offsetX: Float
+    var offsetZ: Float
+    var yawRadians: Float
+
+    static let identity = ScanAlignment(offsetX: 0, offsetZ: 0, yawRadians: 0)
+
+    func apply(_ p: SIMD3<Float>) -> SIMD3<Float> {
+        let (x, z) = applyXZ(x: p.x, z: p.z)
+        return SIMD3(x, p.y, z)
+    }
+
+    func applyXZ(x: Float, z: Float) -> (x: Float, z: Float) {
+        let c = cos(yawRadians), s = sin(yawRadians)
+        return (x * c + z * s + offsetX, -x * s + z * c + offsetZ)
+    }
+
+    /// 방향 벡터(위치 아님 -- 이동은 안 하고 회전만).
+    func rotateXZ(x: Float, z: Float) -> (x: Float, z: Float) {
+        let c = cos(yawRadians), s = sin(yawRadians)
+        return (x * c + z * s, -x * s + z * c)
+    }
+
+    /// 같은 변환을 GroundPose(scan-to-map-studio 평면 관례, X = x, Y = -z) 위에서.
+    /// `applyXZ`와 수학적으로 같은 변환이어야 한다(ScanAlignmentTests가 대조) --
+    /// Y = -z로 바꾸면 yaw 회전은 (X, Y) 평면에서 반시계 +yaw 회전이 되고 heading도
+    /// +yaw만큼 돈다. 프로젝트 단위 위치 확인이 "스캔 k 지도에서 잡은 pose"를 기준
+    /// 스캔 좌표계로 옮기는 데 쓴다.
+    func applyGroundPose(_ pose: GroundPose) -> GroundPose {
+        let c = Double(cos(yawRadians)), s = Double(sin(yawRadians))
+        return GroundPose(
+            x: pose.x * c - pose.y * s + Double(offsetX),
+            y: pose.x * s + pose.y * c - Double(offsetZ),
+            headingRad: pose.headingRad + Double(yawRadians)
+        )
+    }
 }
 
 @MainActor
@@ -67,6 +139,22 @@ final class ScanGroupStore: ObservableObject {
         guard let index = groups.firstIndex(where: { $0.id == groupID }) else { return }
         guard !groups[index].scanIDs.contains(scanID) else { return }
         groups[index].scanIDs.append(scanID)
+        save()
+    }
+
+    /// 그룹 인덱스에서만 뺀다 -- scan_<name> 폴더 자체는 그대로(개별 스캔 삭제는 스캔
+    /// 화면에서). 그 스캔의 정렬 변환도 같이 지운다.
+    func removeScan(scanID: String, from groupID: String) {
+        guard let index = groups.firstIndex(where: { $0.id == groupID }) else { return }
+        groups[index].scanIDs.removeAll { $0 == scanID }
+        groups[index].alignments.removeValue(forKey: scanID)
+        save()
+    }
+
+    /// 정렬 화면(ScanAlignmentView)에서 "저장"할 때 한꺼번에 반영한다.
+    func setAlignments(_ alignments: [String: ScanAlignment], for groupID: String) {
+        guard let index = groups.firstIndex(where: { $0.id == groupID }) else { return }
+        groups[index].alignments = alignments
         save()
     }
 

@@ -72,6 +72,21 @@ final class ScanGroupMergerTests: XCTestCase {
         XCTAssertTrue(secondTriangleIndices.allSatisfy { $0 >= 3 })
     }
 
+    func testMergeMeshAppliesAlignmentToNonReferenceScan() throws {
+        let scanA = try makeScanFolder(named: "A", origin: .zero)
+        let scanB = try makeScanFolder(named: "B", origin: .zero) // A와 겹치는 자리에서 시작
+
+        // B를 x로 100 옮기면 A와 안 겹쳐서 용접으로 안 합쳐지고, B의 정점들은 전부 x >= 100.
+        let merged = try ScanGroupMerger.mergeMesh(scans: [
+            .init(folderURL: scanA, alignment: .identity),
+            .init(folderURL: scanB, alignment: ScanAlignment(offsetX: 100, offsetZ: 0, yawRadians: 0)),
+        ])
+
+        XCTAssertEqual(merged.positions.count, 6)
+        XCTAssertEqual(merged.positions.filter { $0.x >= 100 }.count, 3)
+        XCTAssertEqual(merged.positions.filter { $0.x < 100 }.count, 3)
+    }
+
     func testMergeMeshSkipsScansWithoutUSDZ() throws {
         let scanA = try makeScanFolder(named: "A", origin: .zero)
         let scanNoMesh = root.appendingPathComponent("scan_no_mesh")

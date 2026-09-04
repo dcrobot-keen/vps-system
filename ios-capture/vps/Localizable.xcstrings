@@ -1,545 +1,825 @@
 {
-  "sourceLanguage" : "ko",
-  "strings" : {
-    "%@ · %@" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@ · %2$@"
+  "sourceLanguage": "ko",
+  "strings": {
+    "%@ · %@": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$@ · %2$@"
           }
         }
       }
     },
-    "%@: x=%@m, y=%@m, heading=%@°" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@: x=%2$@m, y=%3$@m, heading=%4$@°"
+    "%@: x=%@m, y=%@m, heading=%@°": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$@: x=%2$@m, y=%3$@m, heading=%4$@°"
           }
         }
       }
     },
-    "%lld / %lld" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$lld / %2$lld"
+    "%lld / %lld": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$lld / %2$lld"
           }
         }
       }
     },
-    "%lld / %lld 프레임" : {
-      "localizations" : {
-        "ko" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$lld / %2$lld 프레임"
+    "%lld / %lld 프레임": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$lld / %2$lld 프레임"
           }
         }
       }
     },
-    "%lld 프레임" : {
-
-    },
-    "3D mesh 보기" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "View 3D Mesh"
+    "%lld 프레임": {},
+    "(자동 순환)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(auto-cycle)"
           }
         }
       }
     },
-    "3D 공간 스캔에는 LiDAR 센서가 필요합니다. iPhone 12 Pro 이후의 Pro/Pro Max 모델, 2020년 이후의 iPad Pro에서 사용할 수 있습니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "3D space scanning requires a LiDAR sensor. Available on iPhone 12 Pro and later Pro/Pro Max models, and iPad Pro models from 2020 onward."
+    "3D mesh 보기": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View 3D Mesh"
           }
         }
       }
     },
-    "http://100.x.x.x:8000" : {
-
-    },
-    "mesh" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "mesh"
+    "3D 공간 스캔에는 LiDAR 센서가 필요합니다. iPhone 12 Pro 이후의 Pro/Pro Max 모델, 2020년 이후의 iPad Pro에서 사용할 수 있습니다.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3D space scanning requires a LiDAR sensor. Available on iPhone 12 Pro and later Pro/Pro Max models, and iPad Pro models from 2020 onward."
           }
         }
       }
     },
-    "scan.usdz 없음" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No scan.usdz"
+    "VPS 서버 주소": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "VPS Server Address"
           }
         }
       }
     },
-    "scan.usdz 있음" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "scan.usdz available"
+    "VPS 서버에 업로드": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Upload to VPS Server"
           }
         }
       }
     },
-    "VPS 서버 주소" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "VPS Server Address"
+    "http://100.x.x.x:8000": {},
+    "mesh": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "mesh"
           }
         }
       }
     },
-    "VPS 서버에 업로드" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Upload to VPS Server"
+    "scan.usdz 없음": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No scan.usdz"
           }
         }
       }
     },
-    "가져오기 실패" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Import Failed"
+    "scan.usdz 있음": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "scan.usdz available"
           }
         }
       }
     },
-    "가져온 파일" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Imported Files"
+    "가져오기 실패": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Import Failed"
           }
         }
       }
     },
-    "가져온 파일 없음" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No Imported Files"
+    "가져온 파일": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Imported Files"
           }
         }
       }
     },
-    "같은 Tailscale 네트워크 또는 같은 Wi-Fi에 있는 서버의 주소를 입력하세요. 예: http://100.64.1.2:8000" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Enter the address of a server on the same Tailscale network or Wi-Fi. Example: http://100.64.1.2:8000"
+    "가져온 파일 없음": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Imported Files"
           }
         }
       }
     },
-    "고급 모드" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Advanced Mode"
+    "같은 Tailscale 네트워크 또는 같은 Wi-Fi에 있는 서버의 주소를 입력하세요. 예: http://100.64.1.2:8000": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter the address of a server on the same Tailscale network or Wi-Fi. Example: http://100.64.1.2:8000"
           }
         }
       }
     },
-    "내보내기" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Export"
+    "개인정보 처리방침": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privacy Policy"
           }
         }
       }
     },
-    "내보내기 실패" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Export Failed"
+    "고급 모드": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Advanced Mode"
           }
         }
       }
     },
-    "닫기" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Close"
+    "기준": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reference"
           }
         }
       }
     },
-    "등록 완료 (room: %@)" : {
-
-    },
-    "로봇 시스템(VPS 서버)과 연동하는 기능을 켭니다. 일반적인 스캔·내보내기에는 필요 없습니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Turns on features that connect to a robot system (VPS server). Not needed for normal scanning and exporting."
+    "남은 공간": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Available"
           }
         }
       }
     },
-    "만든 뒤 스캔을 여러 번 추가해서 이어붙일 수 있습니다." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "After creating it, you can add multiple scans to stitch together."
+    "내보내기": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export"
           }
         }
       }
     },
-    "만든 프로젝트가 없습니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No projects yet"
+    "내보내기 실패": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export Failed"
           }
         }
       }
     },
-    "만들기" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Create"
+    "닫기": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close"
           }
         }
       }
     },
-    "바닥 평면 보기" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "View Floor Plan"
+    "등록 완료 (room: %@)": {},
+    "로봇 시스템(VPS 서버)과 연동하는 기능을 켭니다. 일반적인 스캔·내보내기에는 필요 없습니다.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turns on features that connect to a robot system (VPS server). Not needed for normal scanning and exporting."
           }
         }
       }
     },
-    "삭제" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Delete"
+    "만든 뒤 스캔을 여러 개 추가하고, 정렬해서 하나로 합칠 수 있습니다.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "After creating it, add several scans, then align and merge them into one."
           }
         }
       }
     },
-    "새 프로젝트" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "New Project"
+    "만든 뒤 스캔을 여러 번 추가해서 이어붙일 수 있습니다.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "After creating it, you can add multiple scans to stitch together."
           }
         }
       }
     },
-    "설정" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Settings"
+    "만든 프로젝트가 없습니다": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No projects yet"
           }
         }
       }
     },
-    "스캔 %lld개" : {
-
-    },
-    "스캔 시작" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Start Scan"
+    "만들기": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Create"
           }
         }
       }
     },
-    "스캔 추가" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Add Scan"
+    "맞출 스캔": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scan to move"
           }
         }
       }
     },
-    "스캔메시" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ScanMesh"
+    "바닥 평면": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Floor plan"
           }
         }
       }
     },
-    "스캔한 프로젝트가 없습니다" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No Scanned Projects"
+    "바닥 평면 보기": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View Floor Plan"
           }
         }
       }
     },
-    "실제 저장 폴더 이름은 scan_<이름>이 됩니다." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The actual storage folder will be named scan_<name>."
+    "바닥 평면이 있는 스캔이 2개 이상이어야 정렬할 수 있습니다": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alignment needs at least two scans with a floor plan"
           }
         }
       }
     },
-    "아직 스캔이 없습니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No scans yet"
+    "버전": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Version"
           }
         }
       }
     },
-    "오른쪽 위 \"스캔 추가\"로 첫 스캔을 시작하세요" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tap \"Add Scan\" in the top right to start your first scan"
+    "사진·depth·mesh 등 이 스캔의 파일이 모두 지워지며 되돌릴 수 없습니다.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All of this scan's files (photos, depth, mesh, and more) will be deleted. This cannot be undone."
           }
         }
       }
     },
-    "오른쪽 위 + 버튼으로 새 프로젝트를 시작하세요" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tap the + button in the top right to start a new project"
+    "삭제": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete"
           }
         }
       }
     },
-    "오른쪽 위 +로 glb/pcd/ply/usdz/obj 파일을 가져오세요" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tap + in the top right to import a glb, pcd, ply, usdz, or obj file"
+    "새 프로젝트": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New Project"
           }
         }
       }
     },
-    "완료" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Done"
+    "설정": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Settings"
           }
         }
       }
     },
-    "위치 확인" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Check Location"
+    "스캔 %lld개": {},
+    "스캔 데이터": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scan data"
           }
         }
       }
     },
-    "위치 확인 (서버 없이)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Check Location (No Server)"
+    "스캔 데이터는 이 앱이 저장한 모든 스캔 폴더의 합계입니다. 스캔은 각 스캔 화면에서 지울 수 있습니다.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scan data is the total of every scan folder this app has saved. Delete scans from each scan's screen."
           }
         }
       }
     },
-    "이 기기에서는 스캔할 수 없습니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This Device Can't Scan"
+    "스캔 삭제": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete Scan"
           }
         }
       }
     },
-    "이 프로젝트 용량: %@" : {
-
-    },
-    "이미 있는 이름입니다" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This name is already in use"
+    "스캔 시작": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start Scan"
           }
         }
       }
     },
-    "이어서 스캔 — 이전에 찍었던 곳을 비춰서 위치를 다시 맞춰주세요" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Continuing scan — point the camera at a previously scanned area to relocalize"
+    "스캔 정렬": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Align Scans"
           }
         }
       }
     },
-    "저장 공간: %@ 사용 가능" : {
-
-    },
-    "저장 공간이 부족할 수 있어요" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Storage space may be low"
+    "스캔 추가": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add Scan"
           }
         }
       }
     },
-    "정지 & 저장" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stop & Save"
+    "스캔메시": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ScanMesh"
           }
         }
       }
     },
-    "천천히, 흔들지 않게 움직여주세요. 흰 벽보다는 가구·표지판처럼 특징이 뚜렷한 곳 위주로, 같은 곳도 2~3개 각도에서 훑어주면 좋아요." : {
-
-    },
-    "취소" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cancel"
+    "스캔이 2개 이상이면 ⋯ 메뉴의 \"스캔 정렬\"로 위치를 맞춘 뒤 내보내세요. 첫 번째 스캔이 기준입니다.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "With two or more scans, use \"Align Scans\" in the ⋯ menu to line them up before exporting. The first scan is the reference."
           }
         }
       }
     },
-    "캡처된 사진 (%lld장)" : {
-
-    },
-    "텍스처 결과 보기" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "View Textured Result"
+    "스캔한 프로젝트가 없습니다": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No Scanned Projects"
           }
         }
       }
     },
-    "텍스처 다시 생성" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Regenerate Texture"
+    "실제 저장 폴더 이름은 scan_<이름>이 됩니다.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The actual storage folder will be named scan_<name>."
           }
         }
       }
     },
-    "텍스처 생성" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Generate Texture"
+    "아직 스캔이 없습니다": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No scans yet"
           }
         }
       }
     },
-    "프레임: %lld" : {
-
-    },
-    "프로젝트" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Projects"
+    "오른쪽 아래 + 버튼으로 새 프로젝트를 시작하세요": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tap the + button in the bottom right to start a new project"
           }
         }
       }
     },
-    "프로젝트 이름" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Project Name"
+    "오른쪽 아래 버튼으로 첫 스캔을 시작하세요": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tap the button in the bottom right to start your first scan"
           }
         }
       }
     },
-    "확인" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "OK"
+    "오른쪽 위 \"스캔 추가\"로 첫 스캔을 시작하세요": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tap \"Add Scan\" in the top right to start your first scan"
+          }
+        }
+      }
+    },
+    "오른쪽 위 + 버튼으로 새 프로젝트를 시작하세요": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tap the + button in the top right to start a new project"
+          }
+        }
+      }
+    },
+    "오른쪽 위 +로 glb/pcd/ply/usdz/obj 파일을 가져오세요": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tap + in the top right to import a glb, pcd, ply, usdz, or obj file"
+          }
+        }
+      }
+    },
+    "완료": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Done"
+          }
+        }
+      }
+    },
+    "위치 확인": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check Location"
+          }
+        }
+      }
+    },
+    "위치 확인 (서버 없이)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check Location (No Server)"
+          }
+        }
+      }
+    },
+    "이 기기에서는 스캔할 수 없습니다": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This Device Can't Scan"
+          }
+        }
+      }
+    },
+    "이 스캔을 삭제할까요?": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete this scan?"
+          }
+        }
+      }
+    },
+    "이 프로젝트 용량: %@": {},
+    "이미 있는 이름입니다": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This name is already in use"
+          }
+        }
+      }
+    },
+    "이어서 스캔 — 이전에 찍었던 곳을 비춰서 위치를 다시 맞춰주세요": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Continuing scan — point the camera at a previously scanned area to relocalize"
+          }
+        }
+      }
+    },
+    "자동 순환": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto-cycle"
+          }
+        }
+      }
+    },
+    "저장": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save"
+          }
+        }
+      }
+    },
+    "저장 공간": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Storage"
+          }
+        }
+      }
+    },
+    "저장 공간: %@ 사용 가능": {},
+    "저장 공간이 부족할 수 있어요": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Storage space may be low"
+          }
+        }
+      }
+    },
+    "점선이 기준 스캔입니다. 고른 스캔을 한 손가락으로 끌어 옮기고, 두 손가락으로 돌려서 겹치는 부분을 맞추세요.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The dashed outline is the reference scan. Drag the selected scan with one finger to move it and rotate with two fingers until the overlapping areas line up."
+          }
+        }
+      }
+    },
+    "정보": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "About"
+          }
+        }
+      }
+    },
+    "정지 & 저장": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop & Save"
+          }
+        }
+      }
+    },
+    "지도": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Map"
+          }
+        }
+      }
+    },
+    "천천히, 흔들지 않게 움직여주세요. 흰 벽보다는 가구·표지판처럼 특징이 뚜렷한 곳 위주로, 같은 곳도 2~3개 각도에서 훑어주면 좋아요.": {},
+    "초기화": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reset"
+          }
+        }
+      }
+    },
+    "취소": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel"
+          }
+        }
+      }
+    },
+    "캡처된 사진 (%lld장)": {},
+    "텍스처 결과 보기": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View Textured Result"
+          }
+        }
+      }
+    },
+    "텍스처 다시 생성": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Regenerate Texture"
+          }
+        }
+      }
+    },
+    "텍스처 생성": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Generate Texture"
+          }
+        }
+      }
+    },
+    "프레임: %lld": {},
+    "프로젝트": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projects"
+          }
+        }
+      }
+    },
+    "프로젝트 기준 좌표": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Project coordinates"
+          }
+        }
+      }
+    },
+    "프로젝트 이름": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Project Name"
+          }
+        }
+      }
+    },
+    "프로젝트에서 제거": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove from Project"
+          }
+        }
+      }
+    },
+    "합치는 중…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Merging…"
+          }
+        }
+      }
+    },
+    "합친 mesh": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Merged Mesh"
+          }
+        }
+      }
+    },
+    "합친 mesh 보기": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View Merged Mesh"
+          }
+        }
+      }
+    },
+    "확인": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
           }
         }
       }
     }
   },
-  "version" : "1.0"
+  "version": "1.0"
 }

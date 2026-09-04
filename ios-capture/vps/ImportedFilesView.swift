@@ -8,6 +8,8 @@ import UniformTypeIdentifiers
 struct ImportedFilesView: View {
     @StateObject private var store = ImportedFileStore()
     @State private var isShowingPicker = false
+    /// 예전엔 탭이었지만 지금은 프로젝트 목록의 ⋯ 메뉴에서 시트로 열린다 -- 닫기 버튼 필요.
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
@@ -35,6 +37,9 @@ struct ImportedFilesView: View {
             }
             .navigationTitle("가져온 파일")
             .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("완료") { dismiss() }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         isShowingPicker = true

@@ -57,6 +57,38 @@ final class ScanGroupStoreTests: XCTestCase {
         XCTAssertFalse(store.groupExists(named: "안방"))
     }
 
+    func testSetAlignmentsPersistsAndRemoveScanDropsIts() {
+        let store = ScanGroupStore(indexURL: indexURL)
+        let group = store.createGroup(name: "정렬")
+        store.addScan(scanID: "scan_A", to: group.id)
+        store.addScan(scanID: "scan_B", to: group.id)
+        store.setAlignments(["scan_B": ScanAlignment(offsetX: 1, offsetZ: 2, yawRadians: 0.5)], for: group.id)
+
+        let reloaded = ScanGroupStore(indexURL: indexURL)
+        reloaded.refresh()
+        let g = reloaded.groups.first { $0.id == group.id }
+        XCTAssertEqual(g?.alignment(for: "scan_B"), ScanAlignment(offsetX: 1, offsetZ: 2, yawRadians: 0.5))
+        XCTAssertEqual(g?.alignment(for: "scan_A"), .identity) // 없으면 identity
+
+        reloaded.removeScan(scanID: "scan_B", from: group.id)
+        let after = reloaded.groups.first { $0.id == group.id }
+        XCTAssertEqual(after?.scanIDs, ["scan_A"])
+        XCTAssertEqual(after?.alignment(for: "scan_B"), .identity)
+    }
+
+    /// alignments는 나중에 추가된 필드 -- 그 전에 저장된 파일(키 없음)도 읽혀야 한다.
+    func testDecodesLegacyIndexWithoutAlignmentsKey() throws {
+        let legacy = """
+        [{"id":"g1","name":"옛 프로젝트","scanIDs":["scan_A"],"createdAt":"2026-09-04T00:00:00Z"}]
+        """
+        try Data(legacy.utf8).write(to: indexURL)
+        let store = ScanGroupStore(indexURL: indexURL)
+        store.refresh()
+        XCTAssertEqual(store.groups.count, 1)
+        XCTAssertEqual(store.groups.first?.scanIDs, ["scan_A"])
+        XCTAssertEqual(store.groups.first?.alignments, [:])
+    }
+
     func testDeleteGroupRemovesItFromPersistedIndex() {
         let store = ScanGroupStore(indexURL: indexURL)
         let group = store.createGroup(name: "삭제될 것")

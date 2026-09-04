@@ -106,8 +106,10 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         session.run(config)
     }
 
-    /// `continuingFromWorldMapURL`: 그룹(ScanGroupStore)에 이미 스캔이 있어서 "이어서
-    /// 스캔"하는 경우, 그 이전 스캔이 저장한 `worldmap.arexperience`를 넘긴다 --
+    /// `continuingFromWorldMapURL`: 이전 스캔이 저장한 `worldmap.arexperience`를 넘기면
+    /// 그 좌표계를 이어받아 캡처한다("이어서 스캔"). 프로젝트 흐름에서는 실사용이
+    /// 어색해서 더 이상 안 쓰고(2026-09-04, 스캔은 각자 따로 찍고 ScanAlignmentView로
+    /// 정렬) 기능만 남겨뒀다 --
     /// `initialWorldMap`으로 로드하면 ARKit이 같은 물리 공간을 다시 알아볼 때까지
     /// 재국지화를 시도하고(기존 `updateGuidance`의 `.limited(.relocalizing)` 안내가
     /// 그대로 뜬다), 성공하면 새 스캔의 포즈/mesh가 이전 스캔과 정확히 같은 world
