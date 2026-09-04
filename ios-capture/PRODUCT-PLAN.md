@@ -58,7 +58,7 @@
 - [ ] 저장 공간 표시/경고, 프로젝트 용량 표시
 - [ ] 업로드 background URLSession(고급 모드)
 - [ ] 테스트 확장: ZipArchiver, PCD/PLY/GLB 로더, manifest 기록, FaceRedactor(얼굴 샘플 이미지 필요)
-- [ ] CI: Xcode Cloud 또는 GitHub Actions(macOS) — 빌드 + 테스트
+- [x] CI 착수: GitHub Actions(macOS) — `.github/workflows/ios.yml` + `vps.xcodeproj/xcshareddata/xcschemes/vps.xcscheme`(원래 커밋 안 돼 있던 스킴을 새로 만듦). `xcodebuild build`가 필수 게이트, `xcodebuild test`는 `vpsTests` Xcode 타깃이 아직 없어 `continue-on-error`로 소프트 실패 처리 — **타깃 생성 후 이 continue-on-error를 지워서 필수 게이트로 승격할 것**
 - [ ] TestFlight 외부 테스터
 
 ### D. 출시 후

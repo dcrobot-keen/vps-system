@@ -1,0 +1,58 @@
+name: ios-capture build
+
+# ios-capture(App Store 제품화, PRODUCT-PLAN.md)의 첫 CI 단계 -- 사람이 매번
+# 로컬에서 빌드해보지 않아도 배포 타깃(17.0)/Info.plist 병합 같은 변경이 실제로
+# 컴파일되는지 자동으로 확인한다. macOS 러너에서만 도는 유일한 워크플로다(나머지
+# 저장소는 Node/Go/Python이라 리눅스 러너로 충분).
+#
+# vps.xcodeproj에는 원래 커밋된 스킴이 없었다(Xcode가 사용자별로 자동 생성) --
+# CI가 -scheme으로 고를 대상이 없어서 vps.xcodeproj/xcshareddata/xcschemes/vps.xcscheme
+# 를 직접 만들어 커밋했다.
+
+on:
+  push:
+    paths:
+      - "ios-capture/**"
+      - ".github/workflows/ios.yml"
+  pull_request:
+    paths:
+      - "ios-capture/**"
+      - ".github/workflows/ios.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: ios-capture
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Build (iOS Simulator, no code signing)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project vps.xcodeproj \
+            -scheme vps \
+            -destination "generic/platform=iOS Simulator" \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO
+
+      # vpsTests 타깃은 아직 Xcode에서 사람이 직접 추가해야 한다(pbxproj의 타깃
+      # 배선을 직접 수작업으로 편집하는 건 위험해서 코드만 준비해뒀다 --
+      # PRODUCT-PLAN.md 참고). 그 전까지 이 스텝은 항상 실패하므로 빌드 자체를
+      # 빨갛게 만들지 않게 continue-on-error로 둔다. 타깃이 생기면
+      # continue-on-error를 지우고 정식 필수 게이트로 승격할 것.
+      - name: Test (vpsTests -- soft-fail until the Xcode test target exists)
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project vps.xcodeproj \
+            -scheme vps \
+            -destination "platform=iOS Simulator,name=iPhone 16" \
+            CODE_SIGNING_ALLOWED=NO
