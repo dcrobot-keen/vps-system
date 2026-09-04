@@ -46,11 +46,31 @@ jobs:
       # vpsTests와의 폴더명 충돌 때문에 ScanMeshTests가 됨 -- 기능상 무관).
       # `vps` 스킴의 TestAction에 이미 배선돼 있어 `-scheme vps`만으로 돈다.
       # 로컬 시뮬레이터에서 10개 전부 통과 확인 후 필수 게이트로 승격.
+      #
+      # 처음엔 destination을 "name=iPhone 16"으로 고정했다가 바로 다음 실행에서
+      # "Unable to find a device matching..."로 깨졌다 -- GitHub 러너 이미지가
+      # 미리 만들어두는 시뮬레이터 라인업이 Xcode/러너 버전마다 바뀌는데(이번엔
+      # "iPhone 16"이 없고 iPhone 17/17 Pro/17e/Air만 있었음), 특정 모델명을
+      # 박아두면 또 같은 이유로 깨진다. 그래서 이름을 아예 안 박고, 그 시점에
+      # 실제로 있는 iPhone 시뮬레이터 하나를 매번 동적으로 골라 쓴다.
+      - name: Pick an available iPhone simulator
+        id: sim
+        run: |
+          udid=$(xcrun simctl list devices available -j \
+            | jq -r '.devices | to_entries[] | select(.key | test("iOS")) | .value[] | select(.name | test("iPhone")) | .udid' \
+            | head -n1)
+          if [ -z "$udid" ]; then
+            echo "no available iPhone simulator found" >&2
+            xcrun simctl list devices available
+            exit 1
+          fi
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+
       - name: Test (ScanMeshTests)
         run: |
           set -o pipefail
           xcodebuild test \
             -project vps.xcodeproj \
             -scheme vps \
-            -destination "platform=iOS Simulator,name=iPhone 16" \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
             CODE_SIGNING_ALLOWED=NO
