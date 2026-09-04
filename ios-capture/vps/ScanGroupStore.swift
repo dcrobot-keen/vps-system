@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import simd
 
 /// 여러 스캔(`scan_<name>/`)을 하나의 "프로젝트"로 묶는다. 기존 스캔 폴더는 전혀
 /// 옮기거나 중첩시키지 않는다 -- `ZipArchiver`/`TextureBaker`/`FloorPlanRenderer`/
@@ -89,6 +90,31 @@ struct ScanAlignment: Codable, Equatable {
         return (dx * c - dz * s, dx * s + dz * c)
     }
 
+    /// self를 먼저 적용하고 `next`를 적용하는 합성: `next.applyXZ(self.applyXZ(p))`.
+    /// "새 스캔 -> 옛 스캔" 변환에 "옛 스캔 -> 프로젝트 기준" 변환을 이어 붙일 때 쓴다.
+    func then(_ next: ScanAlignment) -> ScanAlignment {
+        let moved = next.applyXZ(x: offsetX, z: offsetZ)
+        return ScanAlignment(offsetX: moved.x, offsetZ: moved.z, yawRadians: yawRadians + next.yawRadians)
+    }
+
+    /// ARKit 세션을 새로 시작(resetTracking)하는 순간의 카메라 변환(옛 좌표계 기준)에서
+    /// "새 세션 좌표계 -> 옛 좌표계" 변환을 만든다. 새 세션의 원점은 그 순간의 기기
+    /// 위치이고(.gravity 정렬: y가 중력 반대, 기기가 보는 수평 방향이 -z), 두 좌표계 모두
+    /// 중력 정렬이라 남는 차이는 평면 위치 + yaw뿐이다. 옛 좌표계에서의 기기 위치가
+    /// offset, 기기 전방(-columns.2)의 수평 성분이 새 좌표계의 -z가 가야 할 방향이다.
+    /// "이전 스캔 위치에 맞추기"(ScanSessionManager.startAnchoring)가 쓴다.
+    static func fromCameraTransform(_ t: simd_float4x4) -> ScanAlignment {
+        var fx = -t.columns.2.x, fz = -t.columns.2.z
+        if fx * fx + fz * fz < 0.04 {
+            // 거의 수직으로 바닥/천장을 보고 있으면 전방의 수평 성분이 없다 -- 기기
+            // 위쪽(columns.1)의 수평 성분이 그때의 "앞"이다.
+            fx = t.columns.1.x
+            fz = t.columns.1.z
+        }
+        // rotateXZ(0, -1) = (-sin yaw, -cos yaw)가 (fx, fz) 방향이어야 한다.
+        return ScanAlignment(offsetX: t.columns.3.x, offsetZ: t.columns.3.z, yawRadians: atan2(-fx, -fz))
+    }
+
     /// yaw를 `delta`만큼 더하되 기준 좌표계의 `pivot` 지점이 제자리에 있도록 offset을
     /// 보정한다. 정렬 화면이 이미지 중심을 축으로 돌릴 때 쓴다 -- 그냥 yaw만 바꾸면
     /// 스캔 원점(스캔 시작 지점, 화면에 안 보임)을 축으로 돌아서 이미지가 멀리 날아간다.
@@ -168,6 +194,13 @@ final class ScanGroupStore: ObservableObject {
         guard let index = groups.firstIndex(where: { $0.id == groupID }) else { return }
         groups[index].scanIDs.removeAll { $0 == scanID }
         groups[index].alignments.removeValue(forKey: scanID)
+        save()
+    }
+
+    /// 스캔 하나의 정렬 변환만 갱신 -- "이전 스캔 위치에 맞추기"로 찍은 스캔이 저장될 때.
+    func setAlignment(_ alignment: ScanAlignment, for scanID: String, in groupID: String) {
+        guard let index = groups.firstIndex(where: { $0.id == groupID }) else { return }
+        groups[index].alignments[scanID] = alignment
         save()
     }
 

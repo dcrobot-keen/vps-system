@@ -18,21 +18,28 @@ struct FloorPlanLayer: Identifiable {
     /// 그리기용 -- 못 본 곳(회색)은 투명하게 뚫려 있어 겹쳐 그려도 밑 레이어가 비친다.
     let image: UIImage
     let meta: FloorPlanRenderer.PersistedMeta
-    /// 자동 맞춤(ScanRegistration)용 벽 픽셀 중심 -- 이 스캔의 로컬 world (x, z), 최대
-    /// `maxWallPoints`개. `load(forAlignment: true)`일 때만 채운다.
+    /// 자동 맞춤(ScanRegistration)용 벽 점 -- 이 스캔의 로컬 world (x, z), 최대
+    /// `maxWallPoints`개. scan.usdz가 있으면 mesh를 바닥 위 1.0~1.6m 띠로 자른 단면
+    /// (`ScanRegistration.wallSliceXZ`, 벽이 선으로 또렷함), 없으면 floorplan.png의 벽
+    /// 픽셀(덩어리라 정합엔 약함). `load(forAlignment: true)`일 때만 채운다.
     let wallPointsXZ: [SIMD2<Float>]
+    /// 이 스캔이 바닥으로 본 자리(floorplan.png의 바닥 픽셀 중심) -- 자동 맞춤의 모순
+    /// 점수용. `load(forAlignment: true)`일 때만.
+    let freePointsXZ: [SIMD2<Float>]
     /// 정렬 화면이 역할별 틴트 이미지를 만들 때 쓴다. `load(forAlignment: true)`일 때만.
     let pixels: FloorPlanPixels?
 
     static let maxWallPoints = 6000
+    static let maxFreePoints = 12000
 
     init(id: String, label: String, image: UIImage, meta: FloorPlanRenderer.PersistedMeta,
-         wallPointsXZ: [SIMD2<Float>] = [], pixels: FloorPlanPixels? = nil) {
+         wallPointsXZ: [SIMD2<Float>] = [], freePointsXZ: [SIMD2<Float>] = [], pixels: FloorPlanPixels? = nil) {
         self.id = id
         self.label = label
         self.image = image
         self.meta = meta
         self.wallPointsXZ = wallPointsXZ
+        self.freePointsXZ = freePointsXZ
         self.pixels = pixels
     }
 
@@ -73,10 +80,22 @@ struct FloorPlanLayer: Identifiable {
               let raw = UIImage(contentsOfFile: folderURL.appendingPathComponent("floorplan.png").path)
         else { return nil }
         let pixels = FloorPlanPixels(image: raw)
+        var wallPoints: [SIMD2<Float>] = []
+        var freePoints: [SIMD2<Float>] = []
+        if forAlignment {
+            if let floorY = meta.floorHeightMin,
+               let mesh = try? MeshUnifier.load(usdzURL: folderURL.appendingPathComponent("scan.usdz")) {
+                wallPoints = ScanRegistration.wallSliceXZ(positions: mesh.positions, floorY: floorY, maxPoints: maxWallPoints)
+            }
+            if wallPoints.isEmpty {
+                wallPoints = pixels?.points(of: .wall, meta: meta, maxPoints: maxWallPoints) ?? []
+            }
+            freePoints = pixels?.points(of: .other, meta: meta, maxPoints: maxFreePoints) ?? []
+        }
         return FloorPlanLayer(
             id: scanID, label: label,
             image: pixels?.overlayImage() ?? raw, meta: meta,
-            wallPointsXZ: forAlignment ? (pixels?.wallPointsXZ(meta: meta, maxPoints: maxWallPoints) ?? []) : [],
+            wallPointsXZ: wallPoints, freePointsXZ: freePoints,
             pixels: forAlignment ? pixels : nil
         )
     }

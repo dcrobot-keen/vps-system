@@ -77,6 +77,23 @@ final class ScanGroupStoreTests: XCTestCase {
     }
 
     /// alignments는 나중에 추가된 필드 -- 그 전에 저장된 파일(키 없음)도 읽혀야 한다.
+    func testSetAlignmentUpdatesOnlyThatScanAndPersists() {
+        let store = ScanGroupStore(indexURL: indexURL)
+        let group = store.createGroup(name: "집")
+        store.addScan(scanID: "scan_a", to: group.id)
+        store.addScan(scanID: "scan_b", to: group.id)
+        let a = ScanAlignment(offsetX: 1, offsetZ: 2, yawRadians: 0.3)
+        store.setAlignments(["scan_a": a], for: group.id)
+
+        let b = ScanAlignment(offsetX: -4, offsetZ: 0.5, yawRadians: -1.2)
+        store.setAlignment(b, for: "scan_b", in: group.id)
+
+        let reloaded = ScanGroupStore(indexURL: indexURL)
+        reloaded.refresh()
+        XCTAssertEqual(reloaded.groups.first?.alignment(for: "scan_a"), a)
+        XCTAssertEqual(reloaded.groups.first?.alignment(for: "scan_b"), b)
+    }
+
     func testDecodesLegacyIndexWithoutAlignmentsKey() throws {
         let legacy = """
         [{"id":"g1","name":"옛 프로젝트","scanIDs":["scan_A"],"createdAt":"2026-09-04T00:00:00Z"}]

@@ -23,6 +23,36 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
     /// updateGuidance 참고).
     @Published private(set) var guidanceMessage: String?
 
+    // MARK: - 이전 스캔 위치에 맞추기(anchoring)
+
+    /// 새 스캔을 시작하기 전에 재국지화를 시도할 이전 스캔 지도 하나.
+    struct AnchorCandidate: Identifiable {
+        let id: String // scanID
+        let label: String
+        let worldMapURL: URL
+        /// 그 스캔 좌표계 -> 프로젝트 기준 좌표계(정렬 화면 또는 그 스캔의 anchoring 결과).
+        let alignment: ScanAlignment
+    }
+
+    enum AnchorPhase: Equatable {
+        case relocalizing(label: String)
+        case anchored(label: String)
+        case failed(String)
+    }
+
+    /// nil이면 anchoring과 무관한 상태(일반 프리뷰/캡처). `.anchored`는 캡처 중에도 유지돼
+    /// 화면에 "스캔 N 위치에 맞춰짐"을 보여준다.
+    @Published private(set) var anchorPhase: AnchorPhase?
+    /// anchoring에 성공해 시작한 캡처의 "이 스캔 좌표계 -> 프로젝트 기준 좌표계". 저장 후
+    /// ScanView가 onSaved로 넘겨 ScanGroupStore에 기록한다. 맞추지 않고 시작했으면 nil.
+    @Published private(set) var anchoredAlignment: ScanAlignment?
+    private var anchorCandidates: [AnchorCandidate] = []
+    private var anchorIndex = 0
+    private var anchorScanName = ""
+    private var anchorRelocalizingSince: Date?
+    private var anchorTimer: Timer?
+    private static let anchorRelocalizeTimeout: TimeInterval = 18
+
     private var frameIndex = 0
     private var sessionName = ""
     private var outputDir: URL!
@@ -181,6 +211,101 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         guidanceMessage = nil
     }
 
+    /// "이전 스캔 위치에 맞추기": 캡처 전에 후보 지도를 차례로 불러와 재국지화를 시도하고,
+    /// 잡히는 순간의 기기 pose로 "새 스캔 좌표계 -> 프로젝트 기준" 변환을 계산한 뒤
+    /// (`ScanAlignment.fromCameraTransform`) 곧바로 새 세션으로 캡처를 시작한다. 옛 지도를
+    /// 이어서 쓰지 않으므로(예전 "이어서 스캔"과 다름) 캡처 자체는 평소와 같은 독립
+    /// 세션이고, 결과 정렬만 자동으로 채워진다. 다른 방을 찍을 때는 각 방 스캔이 문턱
+    /// 근처를 조금씩 같이 담고 있어야 여기서 잡힌다 -- 겹치는 게 없는 두 방은 기하로는
+    /// 맞출 수 없다(ScanRegistration 참고).
+    func startAnchoring(name: String, candidates: [AnchorCandidate]) {
+        guard !isRunning, !candidates.isEmpty else { return }
+        anchorScanName = name
+        anchorCandidates = candidates
+        anchoredAlignment = nil
+        runAnchorSession(index: 0)
+    }
+
+    /// 재국지화가 안 잡힐 때: 맞추지 않고 그냥 새 좌표계로 캡처 시작(정렬은 나중에 손으로).
+    func skipAnchoring() {
+        guard anchorPhase != nil, !isRunning else { return }
+        stopAnchorTimer()
+        anchorPhase = nil
+        anchoredAlignment = nil
+        startSession(name: anchorScanName)
+    }
+
+    /// anchoring을 그만두고 프리뷰로 돌아간다.
+    func cancelAnchoring() {
+        guard anchorPhase != nil, !isRunning else { return }
+        stopAnchorTimer()
+        anchorPhase = nil
+        anchoredAlignment = nil
+        session.run(ARWorldTrackingConfiguration(), options: [.resetTracking, .removeExistingAnchors])
+    }
+
+    private func runAnchorSession(index: Int) {
+        guard anchorCandidates.indices.contains(index) else { return }
+        anchorIndex = index
+        let candidate = anchorCandidates[index]
+        guard let data = try? Data(contentsOf: candidate.worldMapURL),
+              let worldMap = try? NSKeyedUnarchiver.unarchivedObject(ofClass: ARWorldMap.self, from: data)
+        else {
+            // 지도를 못 읽는 후보는 건너뛴다. 전부 못 읽으면 실패.
+            let next = index + 1
+            if next < anchorCandidates.count {
+                runAnchorSession(index: next)
+            } else {
+                stopAnchorTimer()
+                anchorPhase = .failed("이전 스캔의 위치 지도를 읽을 수 없습니다")
+            }
+            return
+        }
+        let config = ARWorldTrackingConfiguration()
+        config.initialWorldMap = worldMap
+        anchorPhase = .relocalizing(label: candidate.label)
+        anchorRelocalizingSince = Date()
+        session.run(config, options: [.resetTracking, .removeExistingAnchors])
+        startAnchorTimerIfNeeded()
+    }
+
+    /// 타임아웃마다 다음 지도로 순환 -- ARKit은 재국지화 실패를 알려주지 않아서
+    /// (LocalizeSessionManager와 같은 이유) 시간으로 넘긴다.
+    private func startAnchorTimerIfNeeded() {
+        stopAnchorTimer()
+        guard anchorCandidates.count > 1 else { return }
+        anchorTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            guard let self, case .relocalizing? = self.anchorPhase,
+                  let since = self.anchorRelocalizingSince,
+                  Date().timeIntervalSince(since) > Self.anchorRelocalizeTimeout
+            else { return }
+            self.runAnchorSession(index: (self.anchorIndex + 1) % self.anchorCandidates.count)
+        }
+    }
+
+    private func stopAnchorTimer() {
+        anchorTimer?.invalidate()
+        anchorTimer = nil
+    }
+
+    /// anchoring 중 프레임: 트래킹이 잡히면(= 옛 지도 좌표계에서 지금 pose를 안다) 변환을
+    /// 계산하고 바로 캡처 세션으로 넘어간다. `startSession`이 resetTracking으로 새 세션을
+    /// 시작하므로 새 좌표계의 원점은 바로 이 순간의 기기 pose다 -- 그래서 이 pose가 곧
+    /// "새 좌표계 -> 옛 지도 좌표계" 변환이 된다(사이에 손이 움직인 몇십 ms만큼의 오차).
+    /// ARSession 델리게이트는 delegateQueue를 안 정했으므로 메인 큐에서 불린다.
+    private func handleAnchorFrame(_ frame: ARFrame) {
+        guard case .relocalizing(let label)? = anchorPhase, frame.camera.trackingState == .normal,
+              anchorCandidates.indices.contains(anchorIndex)
+        else { return }
+        let candidate = anchorCandidates[anchorIndex]
+        let alignment = ScanAlignment.fromCameraTransform(frame.camera.transform).then(candidate.alignment)
+        stopAnchorTimer()
+        anchoredAlignment = alignment
+        anchorPhase = .anchored(label: label)
+        logger.debug("anchoring 성공 -- \(label, privacy: .public) 지도, offset (\(alignment.offsetX), \(alignment.offsetZ)), yaw \(alignment.yawRadians)")
+        startSession(name: anchorScanName)
+    }
+
     func stopSession() {
         guard isRunning else { return }
         // pause() 이후에도 currentFrame이 남아있을 걸로 기대하기보다, 살아있는
@@ -305,6 +430,11 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
     // MARK: - ARSessionDelegate
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        if anchorPhase != nil, !isRunning {
+            handleAnchorFrame(frame)
+            return
+        }
+
         // 캡처 스로틀링과 무관하게 매 프레임 갱신한다 — "왜 프레임이 안 늘어나지"를
         // 스로틀링 때문인지 트래킹 문제 때문인지 실시간으로 구분해서 알려줘야 한다.
         if isRunning { updateGuidance(frame: frame) }
@@ -393,7 +523,12 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
     func session(_ session: ARSession, didFailWithError error: Error) {
         logger.error("ARSession 오류 -- \(error.localizedDescription, privacy: .public)")
         DispatchQueue.main.async { [weak self] in
-            self?.statusMessage = "세션 오류: \(error.localizedDescription)"
+            guard let self else { return }
+            self.statusMessage = "세션 오류: \(error.localizedDescription)"
+            if case .relocalizing? = self.anchorPhase {
+                self.stopAnchorTimer()
+                self.anchorPhase = .failed("위치 맞추기 중 세션 오류: \(error.localizedDescription)")
+            }
         }
     }
 

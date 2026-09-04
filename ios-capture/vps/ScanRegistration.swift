@@ -20,18 +20,34 @@ enum ScanRegistration {
         let rmse: Float
         /// source 점 중 대응 거리 안에 짝이 있었던 비율(0...1).
         let inlierFraction: Float
+        /// source 벽 점 중 target이 "바닥으로 본 자리"에 놓인 비율(0...1) -- 벽이 상대 스캔의
+        /// 빈 바닥 한가운데 놓이면 그 자리는 틀린 것이다. `freeTarget`을 안 주면 0.
+        let conflictFraction: Float
         let iterations: Int
+
+        /// 실기 데이터(2026-09-04, 서로 다른 방 3개)에서 틀린 정합도 대응 40~60%에
+        /// 모순 25~30%가 나왔다 -- 대응만으로는 못 거르고, 모순까지 낮아야 믿는다.
+        var isReliable: Bool {
+            rmse.isFinite && inlierFraction >= minimumInlierFraction && conflictFraction <= maximumConflictFraction
+        }
     }
 
     /// 이보다 대응 비율이 낮으면 "겹치는 벽을 못 찾음"으로 본다.
-    static let minimumInlierFraction: Float = 0.3
+    static let minimumInlierFraction: Float = 0.6
+    /// 이보다 모순 비율이 높으면 벽 모양만 우연히 겹친 것으로 본다.
+    static let maximumConflictFraction: Float = 0.12
 
     /// 손으로 놓은 `initial` 주변에서 멀티스타트(yaw만 몇 도씩 틀어서) -> 거친 ICP(대응
     /// 0.5m) -> 정밀 ICP(대응 0.15m) 순으로 돌리고 가장 좋은 결과를 돌려준다. 대응
     /// 비율이 기준 이상인 후보 중 RMSE 최소, 그런 후보가 없으면 대응 비율 최대.
+    ///
+    /// `freeTarget`: target 스캔들이 바닥으로 본 자리(FloorPlanLayer.freePointsXZ). 후보마다
+    /// source 벽이 그 위에 얼마나 놓이는지(`conflictFraction`)를 재서 벽 모양만 우연히 겹친
+    /// 후보를 거른다.
     static func align(
         source: [SIMD2<Float>],
         target: [SIMD2<Float>],
+        freeTarget: [SIMD2<Float>] = [],
         initial: ScanAlignment,
         seedYawOffsetsDegrees: [Float] = [-12, -6, 0, 6, 12],
         maxSourcePoints: Int = 3000
@@ -39,10 +55,11 @@ enum ScanRegistration {
         let src = subsample(source.filter { $0.x.isFinite && $0.y.isFinite }, maxCount: maxSourcePoints)
         let tgt = target.filter { $0.x.isFinite && $0.y.isFinite }
         guard !src.isEmpty, !tgt.isEmpty else {
-            return Result(alignment: initial, rmse: .infinity, inlierFraction: 0, iterations: 0)
+            return Result(alignment: initial, rmse: .infinity, inlierFraction: 0, conflictFraction: 0, iterations: 0)
         }
         let coarseGrid = PointGrid(points: tgt, cellSize: 0.5)
         let fineGrid = PointGrid(points: tgt, cellSize: 0.15)
+        let freeGrid = freeTarget.isEmpty ? nil : PointGrid(points: freeTarget, cellSize: 0.06)
 
         // 멀티스타트 회전 중심: 초기값으로 옮긴 source의 중심(스캔 원점이 아니라).
         var centroid = SIMD2<Float>.zero
@@ -59,11 +76,48 @@ enum ScanRegistration {
             let fine = refine(source: src, grid: fineGrid, initial: coarse.alignment, maxCorrespondenceDistance: 0.15, maxIterations: 30)
             let candidate = Result(
                 alignment: fine.alignment, rmse: fine.rmse, inlierFraction: fine.inlierFraction,
+                conflictFraction: conflictFraction(source: src, alignment: fine.alignment, wallGrid: fineGrid, freeGrid: freeGrid),
                 iterations: coarse.iterations + fine.iterations
             )
             if isBetter(candidate, than: best) { best = candidate }
         }
-        return best ?? Result(alignment: initial, rmse: .infinity, inlierFraction: 0, iterations: 0)
+        return best ?? Result(alignment: initial, rmse: .infinity, inlierFraction: 0, conflictFraction: 0, iterations: 0)
+    }
+
+    /// source 벽 점 중 벽 대응은 없는데(0.15m 안에 target 벽 없음) target의 바닥 위(0.06m 안)에
+    /// 놓인 비율.
+    static func conflictFraction(source: [SIMD2<Float>], alignment: ScanAlignment, wallGrid: PointGrid, freeGrid: PointGrid?) -> Float {
+        guard let freeGrid, !source.isEmpty else { return 0 }
+        var conflicts = 0
+        for p in source {
+            let q = alignment.applyXZ(x: p.x, z: p.y)
+            let moved = SIMD2(q.x, q.z)
+            if wallGrid.nearest(to: moved, within: 0.15) != nil { continue }
+            if freeGrid.nearest(to: moved, within: 0.06) != nil { conflicts += 1 }
+        }
+        return Float(conflicts) / Float(source.count)
+    }
+
+    /// scan.usdz mesh 정점 중 바닥 위 `band`(m) 높이 띠에 든 것을 XZ에 투영하고 `voxel`
+    /// 격자로 중복을 없앤 점집합 -- 자동 맞춤의 벽 입력. floorplan.png의 벽(분류된 삼각형을
+    /// 채운 덩어리)보다 훨씬 선명한 벽 단면이 나온다(2026-09-04 실기 데이터로 확인). 가구
+    /// (책상·침대)는 대개 1m 아래라 빠지고 벽·문·장롱만 남는다.
+    static func wallSliceXZ(
+        positions: [SIMD3<Float>], floorY: Float, band: ClosedRange<Float> = 1.0...1.6,
+        voxel: Float = 0.05, maxPoints: Int = 6000
+    ) -> [SIMD2<Float>] {
+        var seen = Set<Int64>()
+        var points: [SIMD2<Float>] = []
+        for p in positions {
+            guard p.x.isFinite, p.y.isFinite, p.z.isFinite, band.contains(p.y - floorY) else { continue }
+            let ix = Int32(clamping: Int((p.x / voxel).rounded(.down)))
+            let iz = Int32(clamping: Int((p.z / voxel).rounded(.down)))
+            let key = (Int64(ix) << 32) | Int64(UInt32(bitPattern: iz))
+            if seen.insert(key).inserted {
+                points.append(SIMD2((Float(ix) + 0.5) * voxel, (Float(iz) + 0.5) * voxel))
+            }
+        }
+        return subsample(points, maxCount: maxPoints)
     }
 
     /// 단일 시작 ICP(registration.py의 icp_2d에 해당하되 centroid 초기화 대신 `initial`에서 시작).
@@ -84,11 +138,9 @@ enum ScanRegistration {
 
     static func isBetter(_ a: Result, than b: Result?) -> Bool {
         guard let b else { return true }
-        let aReliable = a.inlierFraction >= minimumInlierFraction
-        let bReliable = b.inlierFraction >= minimumInlierFraction
-        if aReliable != bReliable { return aReliable }
-        if aReliable { return a.rmse < b.rmse }
-        return a.inlierFraction > b.inlierFraction
+        if a.isReliable != b.isReliable { return a.isReliable }
+        if a.isReliable { return a.rmse < b.rmse }
+        return a.inlierFraction - a.conflictFraction > b.inlierFraction - b.conflictFraction
     }
 
     // MARK: - 내부
@@ -141,6 +193,7 @@ enum ScanRegistration {
             alignment: alignmentForm(rotation, translation),
             rmse: rmse,
             inlierFraction: Float(inliers) / Float(max(source.count, 1)),
+            conflictFraction: 0,
             iterations: iterations
         )
     }

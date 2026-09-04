@@ -76,6 +76,53 @@ final class ScanRegistrationTests: XCTestCase {
         XCTAssertFalse(result.rmse.isFinite)
     }
 
+    /// 벽 모양은 일부 맞아도 나머지 벽이 상대 스캔의 빈 바닥 한가운데 놓이면 믿으면 안 된다
+    /// (실기: 서로 다른 방 3개가 대응 40~60%로 "맞았다"고 나왔던 문제).
+    func testConflictWithFreeSpaceMakesResultUnreliable() {
+        let target = roomWalls()
+        var free: [SIMD2<Float>] = []
+        var x: Float = 0.3
+        while x <= 5.7 {
+            var z: Float = 0.3
+            while z <= 3.7 {
+                free.append(SIMD2(x, z))
+                z += 0.1
+            }
+            x += 0.1
+        }
+        // source = 아래쪽 벽 그대로 + 방 한가운데를 가로지르는 가짜 벽(z = 2).
+        var source: [SIMD2<Float>] = target.filter { $0.y == 0 }
+        var t: Float = 1
+        while t <= 5 {
+            source.append(SIMD2(t, 2))
+            t += 0.05
+        }
+        let result = ScanRegistration.align(source: source, target: target, freeTarget: free, initial: .identity)
+        XCTAssertGreaterThan(result.conflictFraction, 0.3, "가짜 벽은 전부 바닥 위에 놓인다")
+        XCTAssertFalse(result.isReliable)
+
+        // 같은 입력을 모순 점수 없이 돌리면 벽 대응만 보고 통과했을 것 -- 그래서 freeTarget이 필요하다.
+        let withoutFree = ScanRegistration.align(source: source, target: target, initial: .identity)
+        XCTAssertEqual(withoutFree.conflictFraction, 0)
+    }
+
+    func testWallSliceKeepsOnlyHeightBandAndDedupesVoxels() {
+        let floorY: Float = -1.5
+        let positions: [SIMD3<Float>] = [
+            SIMD3(1.01, floorY + 1.2, 2.01), // 띠 안
+            SIMD3(1.02, floorY + 1.3, 2.02), // 같은 5cm voxel -> 하나로
+            SIMD3(3.0, floorY + 0.4, 2.0), // 가구 높이 -> 제외
+            SIMD3(3.0, floorY + 2.4, 2.0), // 천장 근처 -> 제외
+            SIMD3(4.01, floorY + 1.5, 0.01), // 띠 안, 다른 voxel (4.0/0.05는 Float로 79.99…라 경계를 피함)
+        ]
+        let slice = ScanRegistration.wallSliceXZ(positions: positions, floorY: floorY)
+        XCTAssertEqual(slice.count, 2)
+        XCTAssertEqual(slice[0].x, 1.025, accuracy: 1e-4)
+        XCTAssertEqual(slice[0].y, 2.025, accuracy: 1e-4)
+        XCTAssertEqual(slice[1].x, 4.025, accuracy: 1e-4)
+        XCTAssertEqual(slice[1].y, 0.025, accuracy: 1e-4)
+    }
+
     func testEmptyInputsReturnInitialUnchanged() {
         let initial = ScanAlignment(offsetX: 1, offsetZ: 2, yawRadians: 0.3)
         let result = ScanRegistration.align(source: [], target: roomWalls(), initial: initial)

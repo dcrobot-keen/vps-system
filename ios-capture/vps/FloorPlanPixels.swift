@@ -50,13 +50,19 @@ struct FloorPlanPixels {
         return .other
     }
 
-    /// 벽 픽셀 중심의 world (x, z) -- 이 스캔의 로컬 좌표(정렬 변환 전). `maxPoints`보다
-    /// 많으면 래스터 순서로 일정 간격 솎는다(ICP엔 수천 점이면 충분).
+    /// 벽 픽셀 중심의 world (x, z) -- `points(of: .wall, ...)`.
     func wallPointsXZ(meta: FloorPlanRenderer.PersistedMeta, maxPoints: Int) -> [SIMD2<Float>] {
+        points(of: .wall, meta: meta, maxPoints: maxPoints)
+    }
+
+    /// `kind`로 분류된 픽셀 중심의 world (x, z) -- 이 스캔의 로컬 좌표(정렬 변환 전).
+    /// `maxPoints`보다 많으면 래스터 순서로 일정 간격 솎는다(ICP엔 수천 점이면 충분).
+    /// `.other`는 "바닥으로 본 자리"라 자동 맞춤의 모순 점수(ScanRegistration)에 쓴다.
+    func points(of target: Kind, meta: FloorPlanRenderer.PersistedMeta, maxPoints: Int) -> [SIMD2<Float>] {
         let resolution = meta.resolutionMetersPerPixel
         var points: [SIMD2<Float>] = []
         for row in 0..<height {
-            for col in 0..<width where kind(at: (row * width + col) * 4) == .wall {
+            for col in 0..<width where kind(at: (row * width + col) * 4) == target {
                 points.append(SIMD2(
                     meta.originX + (Float(col) + 0.5) * resolution,
                     meta.originTopZ + (Float(row) + 0.5) * resolution

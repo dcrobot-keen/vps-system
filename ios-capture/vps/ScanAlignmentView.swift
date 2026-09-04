@@ -331,13 +331,18 @@ struct ScanAlignmentView: View {
     /// 지금 손으로 놓은 자리. 겹치는 벽이 적으면(대응 비율 낮음) 결과를 버리고 알린다.
     private func autoAlign() {
         guard let selectedScanID, let source = selectedLayer else { return }
-        let target: [SIMD2<Float>] = layers.filter { $0.id != selectedScanID }.flatMap { layer -> [SIMD2<Float>] in
-            let a = alignments[layer.id] ?? .identity
-            return layer.wallPointsXZ.map { p in
-                let q = a.applyXZ(x: p.x, z: p.y)
-                return SIMD2(q.x, q.z)
+        let others = layers.filter { $0.id != selectedScanID }
+        func transformed(_ points: (FloorPlanLayer) -> [SIMD2<Float>]) -> [SIMD2<Float>] {
+            others.flatMap { layer -> [SIMD2<Float>] in
+                let a = alignments[layer.id] ?? .identity
+                return points(layer).map { p in
+                    let q = a.applyXZ(x: p.x, z: p.y)
+                    return SIMD2(q.x, q.z)
+                }
             }
         }
+        let target = transformed { $0.wallPointsXZ }
+        let freeTarget = transformed { $0.freePointsXZ }
         guard !source.wallPointsXZ.isEmpty, !target.isEmpty else {
             autoAlignFailed = true
             autoAlignMessage = "벽이 잡힌 바닥 평면이 있어야 자동 맞춤을 할 수 있습니다"
@@ -349,13 +354,14 @@ struct ScanAlignmentView: View {
         autoAlignMessage = nil
 
         Task.detached(priority: .userInitiated) {
-            let result = ScanRegistration.align(source: sourcePoints, target: target, initial: initial)
+            let result = ScanRegistration.align(source: sourcePoints, target: target, freeTarget: freeTarget, initial: initial)
             await MainActor.run {
                 isAutoAligning = false
                 let inlierPercent = Int((result.inlierFraction * 100).rounded())
-                if result.inlierFraction < ScanRegistration.minimumInlierFraction || !result.rmse.isFinite {
+                let conflictPercent = Int((result.conflictFraction * 100).rounded())
+                if !result.isReliable {
                     autoAlignFailed = true
-                    autoAlignMessage = "겹치는 벽을 충분히 찾지 못했습니다(대응 \(inlierPercent)%). 손으로 더 가깝게 맞춘 뒤 다시 시도하세요."
+                    autoAlignMessage = "겹치는 벽을 충분히 찾지 못했습니다(겹침 \(inlierPercent)%, 모순 \(conflictPercent)%). 같은 공간을 겹쳐 찍은 스캔에서만 자동 맞춤이 됩니다 -- 다른 방이면 손으로 놓거나, 다음부터 \"이전 스캔 위치에 맞추기\"로 찍어주세요."
                 } else {
                     alignments[selectedScanID] = result.alignment
                     autoAlignFailed = false

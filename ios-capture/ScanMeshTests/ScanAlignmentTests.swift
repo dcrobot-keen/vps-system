@@ -1,3 +1,4 @@
+import simd
 import XCTest
 @testable import vps
 
@@ -75,5 +76,55 @@ final class ScanAlignmentTests: XCTestCase {
         let q = a.applyXZ(x: 0, z: 0)
         let q2 = rotated.applyXZ(x: 0, z: 0)
         XCTAssertEqual(hypot(q.x - pivot.x, q.z - pivot.z), hypot(q2.x - pivot.x, q2.z - pivot.z), accuracy: 1e-4)
+    }
+
+    func testThenComposesInOrder() {
+        let first = ScanAlignment(offsetX: 1, offsetZ: 2, yawRadians: 0.4)
+        let second = ScanAlignment(offsetX: -3, offsetZ: 0.5, yawRadians: -1.1)
+        let composed = first.then(second)
+        let p: (x: Float, z: Float) = (2.5, -1.5)
+        let step = first.applyXZ(x: p.x, z: p.z)
+        let expected = second.applyXZ(x: step.x, z: step.z)
+        let got = composed.applyXZ(x: p.x, z: p.z)
+        XCTAssertEqual(got.x, expected.x, accuracy: 1e-4)
+        XCTAssertEqual(got.z, expected.z, accuracy: 1e-4)
+        XCTAssertEqual(composed.yawRadians, -0.7, accuracy: 1e-6)
+    }
+
+    func testFromCameraTransformMapsNewSessionAxesOntoOldPose() {
+        // 옛 좌표계에서 기기가 (2, 1.5, -3)에 있고 y축 기준 30도 돌아 있다(카메라 전방 = -columns.2).
+        let theta: Float = 30 * .pi / 180
+        let c = cos(theta), s = sin(theta)
+        let t = simd_float4x4(columns: (
+            SIMD4<Float>(c, 0, -s, 0),
+            SIMD4<Float>(0, 1, 0, 0),
+            SIMD4<Float>(s, 0, c, 0),
+            SIMD4<Float>(2, 1.5, -3, 1)
+        ))
+        let a = ScanAlignment.fromCameraTransform(t)
+
+        // 새 세션 원점 = 기기 위치.
+        let origin = a.applyXZ(x: 0, z: 0)
+        XCTAssertEqual(origin.x, 2, accuracy: 1e-5)
+        XCTAssertEqual(origin.z, -3, accuracy: 1e-5)
+
+        // 새 세션의 -z(기기 전방) = 옛 좌표계의 카메라 전방 수평 성분 (-s, -c).
+        let forward = a.rotateXZ(x: 0, z: -1)
+        XCTAssertEqual(forward.x, -s, accuracy: 1e-5)
+        XCTAssertEqual(forward.z, -c, accuracy: 1e-5)
+    }
+
+    func testFromCameraTransformFallsBackToDeviceUpWhenLookingStraightDown() {
+        // 카메라 전방이 정확히 -y(바닥) -> 수평 성분 없음. 기기 위쪽(columns.1)이 +x를 향한다.
+        let t = simd_float4x4(columns: (
+            SIMD4<Float>(0, 0, 1, 0),
+            SIMD4<Float>(1, 0, 0, 0),
+            SIMD4<Float>(0, 1, 0, 0),
+            SIMD4<Float>(0, 1.2, 0, 1)
+        ))
+        let a = ScanAlignment.fromCameraTransform(t)
+        let forward = a.rotateXZ(x: 0, z: -1)
+        XCTAssertEqual(forward.x, 1, accuracy: 1e-5)
+        XCTAssertEqual(forward.z, 0, accuracy: 1e-5)
     }
 }

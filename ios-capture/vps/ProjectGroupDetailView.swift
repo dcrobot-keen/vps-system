@@ -79,8 +79,8 @@ struct ProjectGroupDetailView: View {
                         } header: {
                             Text("스캔 \(group.scanIDs.count)개")
                         } footer: {
-                            if group.scanIDs.count >= 2 {
-                                Text("스캔이 2개 이상이면 ⋯ 메뉴의 \"스캔 정렬\"로 위치를 맞춘 뒤 내보내세요. 첫 번째 스캔이 기준입니다.")
+                            if group.scanIDs.count >= 1 {
+                                Text("다음 방을 찍을 때 \"이전 스캔 위치에 맞추기\"를 켜면 정렬이 자동으로 채워집니다(방마다 문 밖을 조금 같이 찍어두세요). 안 잡힌 스캔은 ⋯ 메뉴의 \"스캔 정렬\"로 맞추세요. 첫 번째 스캔이 기준입니다.")
                             }
                         }
                     }
@@ -137,10 +137,15 @@ struct ProjectGroupDetailView: View {
             }
         }
         .navigationDestination(isPresented: $isNavigatingToScan) {
-            ScanView(projectName: pendingScanName) {
+            ScanView(projectName: pendingScanName, anchorCandidates: anchorCandidates) { alignment in
                 // ScanSessionManager는 폴더를 scan_<name>으로 만들고, ScanProject.id도
                 // 그 폴더 이름 전체다 -- 그룹엔 그 전체 이름으로 등록해야 목록 조회와 맞는다.
-                store.addScan(scanID: "scan_\(pendingScanName)", to: groupID)
+                let scanID = "scan_\(pendingScanName)"
+                store.addScan(scanID: scanID, to: groupID)
+                if let alignment {
+                    // "이전 스캔 위치에 맞추기"로 찍은 스캔 -- 정렬이 자동으로 채워진다.
+                    store.setAlignment(alignment, for: scanID, in: groupID)
+                }
                 scanStore.refresh()
             }
         }
@@ -185,6 +190,21 @@ struct ProjectGroupDetailView: View {
         guard let group else { return [] }
         return scansInGroup.map {
             ScanGroupMerger.ScanInput(folderURL: $0.url, alignment: group.alignment(for: $0.id))
+        }
+    }
+
+    /// "이전 스캔 위치에 맞추기" 후보 -- 지도가 있는 스캔만, 최근 것부터(옆방일 가능성이
+    /// 높아 먼저 시도). 각 후보의 정렬 변환을 이어 붙여 새 스캔이 프로젝트 기준 좌표계에
+    /// 놓이게 한다.
+    private var anchorCandidates: [ScanSessionManager.AnchorCandidate] {
+        guard let group else { return [] }
+        return scansInGroup.enumerated().reversed().compactMap { index, scan in
+            guard scan.hasWorldMap else { return nil }
+            return ScanSessionManager.AnchorCandidate(
+                id: scan.id, label: "스캔 \(index + 1)",
+                worldMapURL: scan.url.appendingPathComponent("worldmap.arexperience"),
+                alignment: group.alignment(for: scan.id)
+            )
         }
     }
 
