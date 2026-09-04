@@ -232,9 +232,15 @@ struct ProjectDetailView: View {
         let outputURL = texturedGLBURL
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                try TextureBaker.bake(projectURL: projectURL, outputURL: outputURL) { progress in
-                    DispatchQueue.main.async { bakeProgress = progress }
-                }
+                try TextureBaker.bake(
+                    projectURL: projectURL, outputURL: outputURL,
+                    onProgress: { progress in
+                        DispatchQueue.main.async { bakeProgress = progress }
+                    },
+                    onBakedFaceColors: { positions, indices, faceColors in
+                        recolorFloorPlan(projectURL: projectURL, positions: positions, indices: indices, faceColors: faceColors)
+                    }
+                )
                 DispatchQueue.main.async {
                     isBaking = false
                     hasTexturedGLB = true
@@ -246,6 +252,40 @@ struct ProjectDetailView: View {
                 }
             }
         }
+    }
+
+    /// 텍스처 베이킹이 끝난 뒤, 그 결과(face별 평균 색)로 floorplan.png의 바닥 색을
+    /// 실제 사진 색으로 다시 칠한다 -- "텍스처 결과 보기의 바닥 색이 floorplan.png에도
+    /// 입혀졌으면 좋겠다"는 요청(2026-09-04, PRODUCT-PLAN.md). floorplan.png/
+    /// floorplan.json이 없거나(구버전 스캔) 바닥 높이 정보가 없으면(classification
+    /// 미지원 기기에서 바닥 삼각형이 하나도 안 잡힌 경우) 조용히 건너뛴다 -- 부가
+    /// 기능이라 실패해도 텍스처 베이킹 자체(hasTexturedGLB)에 영향을 주면 안 된다.
+    /// `TextureBaker`의 백그라운드 큐에서 그대로 불리므로 여기서도 파일 I/O만 하고
+    /// 메인 스레드로 넘기지 않는다.
+    private func recolorFloorPlan(
+        projectURL: URL, positions: [SIMD3<Float>], indices: [UInt32], faceColors: [SIMD3<Float>]
+    ) {
+        let floorplanURL = projectURL.appendingPathComponent("floorplan.png")
+        guard let meta = FloorPlanRenderer.PersistedMeta.load(from: projectURL),
+              let floorHeightMin = meta.floorHeightMin, let floorHeightMax = meta.floorHeightMax,
+              let baseImage = UIImage(contentsOfFile: floorplanURL.path)
+        else { return }
+
+        let patches = FloorPlanRenderer.floorPatches(
+            positions: positions, indices: indices, faceColors: faceColors,
+            floorHeightMin: floorHeightMin, floorHeightMax: floorHeightMax
+        )
+        guard !patches.isEmpty else { return }
+
+        let scanPathXZ = FloorPlanRenderer.loadScanPathXZ(from: projectURL)
+        let recolored = FloorPlanRenderer.recolorFloor(
+            baseImage: baseImage, floorPatches: patches,
+            resolutionMetersPerPixel: meta.resolutionMetersPerPixel,
+            originX: meta.originX, originTopZ: meta.originTopZ,
+            scanPathXZ: scanPathXZ
+        )
+        guard let pngData = recolored.pngData() else { return }
+        try? pngData.write(to: floorplanURL)
     }
 
     /// scan.usdz 없이 rgb/depth/poses.jsonl만으로 되는 작업이라(VPS DB 빌드는 usdz를

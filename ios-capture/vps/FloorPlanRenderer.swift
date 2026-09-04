@@ -27,6 +27,12 @@ enum FloorPlanRenderer {
         let originTopZ: Float
         let widthPx: Int
         let heightPx: Int
+        /// 바닥으로 분류된 삼각형들의 world-space Y 범위(classification 있으면 실제
+        /// 분류값, 없으면 높이 휴리스틱이 쓴 대역). 바닥 삼각형이 하나도 없었으면 nil.
+        /// 텍스처 베이킹 결과에서 "이 face가 바닥인가"를 다시 판정하거나(바닥 색
+        /// 재입히기), 위치확인 AR 오버레이가 바닥 평면의 y 높이를 알아내는 데 쓴다.
+        let floorHeightMin: Float?
+        let floorHeightMax: Float?
 
         /// world-space (x, z)를 이 이미지의 픽셀 좌표로 변환한다. Phase 2(VPS 경로
         /// 오버레이)가 같은 매핑으로 이 위에 더 그릴 수 있도록 공개해둔다.
@@ -34,6 +40,54 @@ enum FloorPlanRenderer {
             CGPoint(
                 x: CGFloat((x - originX) / resolutionMetersPerPixel),
                 y: CGFloat((originTopZ - z) / resolutionMetersPerPixel)
+            )
+        }
+
+        /// floorplan.json에 그대로 저장할 수 있는 dictionary(JSONSerialization용).
+        /// `image`는 별도로 floorplan.png에 저장하므로 여기 포함하지 않는다.
+        var metadataDictionary: [String: Any] {
+            var dict: [String: Any] = [
+                "resolution_meters_per_pixel": resolutionMetersPerPixel,
+                "origin_x": originX,
+                "origin_top_z": originTopZ,
+                "width_px": widthPx,
+                "height_px": heightPx,
+            ]
+            if let floorHeightMin { dict["floor_height_min"] = floorHeightMin }
+            if let floorHeightMax { dict["floor_height_max"] = floorHeightMax }
+            return dict
+        }
+    }
+
+    /// `Result.metadataDictionary`가 floorplan.json으로 저장해둔 값을 다시 읽는다.
+    /// `ProjectDetailView`(텍스처 베이킹 후 바닥 재색칠)와 `LocalizeSessionManager`
+    /// (위치확인 AR 오버레이)가 공유해서 쓴다.
+    struct PersistedMeta {
+        let resolutionMetersPerPixel: Float
+        let originX: Float
+        let originTopZ: Float
+        let widthPx: Int
+        let heightPx: Int
+        let floorHeightMin: Float?
+        let floorHeightMax: Float?
+
+        static func load(from projectURL: URL) -> PersistedMeta? {
+            guard let data = try? Data(contentsOf: projectURL.appendingPathComponent("floorplan.json")),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let resolution = json["resolution_meters_per_pixel"] as? Double,
+                  let originX = json["origin_x"] as? Double,
+                  let originTopZ = json["origin_top_z"] as? Double,
+                  let widthPx = json["width_px"] as? Int,
+                  let heightPx = json["height_px"] as? Int
+            else { return nil }
+            return PersistedMeta(
+                resolutionMetersPerPixel: Float(resolution),
+                originX: Float(originX),
+                originTopZ: Float(originTopZ),
+                widthPx: widthPx,
+                heightPx: heightPx,
+                floorHeightMin: (json["floor_height_min"] as? Double).map(Float.init),
+                floorHeightMax: (json["floor_height_max"] as? Double).map(Float.init)
             )
         }
     }
@@ -75,6 +129,8 @@ enum FloorPlanRenderer {
 
         var floorTriangles: [Triangle] = []
         var wallTriangles: [Triangle] = []
+        var floorMinY = Float.greatestFiniteMagnitude
+        var floorMaxY = -Float.greatestFiniteMagnitude
 
         for anchor in meshAnchors {
             let worldVerts = worldVertices(for: anchor)
@@ -111,13 +167,19 @@ enum FloorPlanRenderer {
                 guard isFloor || isWall else { continue }
                 if isFloor {
                     floorTriangles.append(Triangle(a: a, b: b, c: c))
+                    floorMinY = min(floorMinY, v0.y, v1.y, v2.y)
+                    floorMaxY = max(floorMaxY, v0.y, v1.y, v2.y)
                 } else {
                     wallTriangles.append(Triangle(a: a, b: b, c: c))
                 }
             }
         }
 
-        return rasterize(floorTriangles: floorTriangles, wallTriangles: wallTriangles, scanPathXZ: scanPathXZ)
+        return rasterize(
+            floorTriangles: floorTriangles, wallTriangles: wallTriangles, scanPathXZ: scanPathXZ,
+            floorHeightMin: floorTriangles.isEmpty ? nil : floorMinY,
+            floorHeightMax: floorTriangles.isEmpty ? nil : floorMaxY
+        )
     }
 
     /// ARMeshAnchor의 vertex를 world 좌표로 변환한다. MeshExporter.scnGeometry와 같은
@@ -171,7 +233,8 @@ enum FloorPlanRenderer {
     /// world-space(x, z) 삼각형 목록(바닥/벽)과 스캔 경로를 받아 실제 이미지를 그린다.
     /// `render(meshAnchors:scanPathXZ:)`가 ARMeshAnchor에서 이 입력을 뽑아 호출한다.
     static func rasterize(
-        floorTriangles: [Triangle], wallTriangles: [Triangle], scanPathXZ: [SIMD2<Float>]
+        floorTriangles: [Triangle], wallTriangles: [Triangle], scanPathXZ: [SIMD2<Float>],
+        floorHeightMin: Float? = nil, floorHeightMax: Float? = nil
     ) -> Result? {
         guard !floorTriangles.isEmpty || !wallTriangles.isEmpty else { return nil }
 
@@ -269,7 +332,9 @@ enum FloorPlanRenderer {
             originX: minX,
             originTopZ: maxZ,
             widthPx: widthPx,
-            heightPx: heightPx
+            heightPx: heightPx,
+            floorHeightMin: floorHeightMin,
+            floorHeightMax: floorHeightMax
         )
     }
 
@@ -297,5 +362,118 @@ enum FloorPlanRenderer {
         let radius: CGFloat = 6
         color.setFill()
         ctx.fillEllipse(in: CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2))
+    }
+
+    // MARK: - 텍스처 베이킹 결과로 바닥 색 재입히기 (ARKit 의존 없음 -- 테스트 가능)
+
+    /// welded mesh 하나 안에서 world Y가 바닥 높이 대역(±허용치) 안에 있는 face만
+    /// 골라 그 face의 베이킹된 평균 색과 함께 반환한다. `TextureBaker.bake`가
+    /// `onBakedFaceColors`로 넘겨주는 값(재로드한 scan.usdz 기준이라 classification이
+    /// 없음)에 이 높이 검사로 "바닥이었을 가능성이 높은 face"를 다시 골라낸다.
+    private static let floorHeightMatchTolerance: Float = 0.03
+
+    static func floorPatches(
+        positions: [SIMD3<Float>], indices: [UInt32], faceColors: [SIMD3<Float>],
+        floorHeightMin: Float, floorHeightMax: Float
+    ) -> [(triangle: Triangle, color: UIColor)] {
+        let faceCount = indices.count / 3
+        var patches: [(Triangle, UIColor)] = []
+        patches.reserveCapacity(faceCount)
+        let lowerBound = floorHeightMin - floorHeightMatchTolerance
+        let upperBound = floorHeightMax + floorHeightMatchTolerance
+
+        for f in 0..<faceCount where f < faceColors.count {
+            let i0 = Int(indices[f * 3]), i1 = Int(indices[f * 3 + 1]), i2 = Int(indices[f * 3 + 2])
+            guard i0 < positions.count, i1 < positions.count, i2 < positions.count else { continue }
+            let v0 = positions[i0], v1 = positions[i1], v2 = positions[i2]
+            let avgY = (v0.y + v1.y + v2.y) / 3
+            guard avgY >= lowerBound, avgY <= upperBound else { continue }
+
+            let a = SIMD2<Float>(v0.x, v0.z), b = SIMD2<Float>(v1.x, v1.z), c = SIMD2<Float>(v2.x, v2.z)
+            guard a.x.isFinite, a.y.isFinite, b.x.isFinite, b.y.isFinite, c.x.isFinite, c.y.isFinite else {
+                continue
+            }
+            let color = faceColors[f]
+            let uiColor = UIColor(red: CGFloat(color.x), green: CGFloat(color.y), blue: CGFloat(color.z), alpha: 1)
+            patches.append((Triangle(a: a, b: b, c: c), uiColor))
+        }
+        return patches
+    }
+
+    /// 기존 floorplan.png(분류 기반, 바닥=흰색) 위에 텍스처 베이킹이 실제로 만든
+    /// 바닥 색을 덧칠한다. 벽/배경은 원본 그대로 두고(다시 계산하지 않음) 바닥이
+    /// 있던 자리에만 색을 얹은 뒤, 경로/마커가 그 밑에 깔리지 않도록 마지막에 다시
+    /// 그린다. `baseImage`와 정확히 같은 픽셀 격자를 쓰기 위해 좌표 매핑(resolution/
+    /// origin)은 새로 계산하지 않고 `floorplan.json`(PersistedMeta)에서 그대로 받는다.
+    static func recolorFloor(
+        baseImage: UIImage,
+        floorPatches: [(triangle: Triangle, color: UIColor)],
+        resolutionMetersPerPixel: Float, originX: Float, originTopZ: Float,
+        scanPathXZ: [SIMD2<Float>]
+    ) -> UIImage {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let renderer = UIGraphicsImageRenderer(size: baseImage.size, format: format)
+
+        func pixel(_ world: SIMD2<Float>) -> CGPoint {
+            CGPoint(
+                x: CGFloat((world.x - originX) / resolutionMetersPerPixel),
+                y: CGFloat((originTopZ - world.y) / resolutionMetersPerPixel)
+            )
+        }
+
+        return renderer.image { rendererContext in
+            let cg = rendererContext.cgContext
+            baseImage.draw(at: .zero)
+
+            for patch in floorPatches {
+                patch.color.setFill()
+                fillTriangle(patch.triangle, in: cg, pixel: pixel)
+            }
+
+            if scanPathXZ.count >= 2 {
+                pathColor.setStroke()
+                cg.setLineWidth(3)
+                cg.setLineJoin(.round)
+                cg.setLineCap(.round)
+                let path = CGMutablePath()
+                path.move(to: pixel(scanPathXZ[0]))
+                for p in scanPathXZ.dropFirst() { path.addLine(to: pixel(p)) }
+                cg.addPath(path)
+                cg.strokePath()
+            }
+            if let last = scanPathXZ.last, scanPathXZ.count >= 2 {
+                drawMarker(at: pixel(last), color: endMarkerColor, in: cg)
+            }
+            if let first = scanPathXZ.first {
+                drawMarker(at: pixel(first), color: startMarkerColor, in: cg)
+            }
+        }
+    }
+
+    /// poses.jsonl에서 world (x, z) 궤적만 뽑는다. `scanPathXZ`를 세션이 끝난 뒤(텍스처
+    /// 베이킹은 사용자가 나중에, 어쩌면 앱을 재시작한 뒤에 트리거하므로
+    /// `ScanSessionManager`가 메모리에 들고 있던 배열은 이미 사라진 상태다) 다시
+    /// 얻어야 하는 곳(바닥 재색칠)에서 쓴다. `LocalizeSessionManager.loadTrajectory`와
+    /// 달리 GroundPose 변환 없이 raw world 좌표 그대로 반환한다 -- floorplan.png를
+    /// 만들 때 쓴 좌표계와 같아야 하기 때문.
+    static func loadScanPathXZ(from projectURL: URL) -> [SIMD2<Float>] {
+        let posesURL = projectURL.appendingPathComponent("poses/poses.jsonl")
+        guard let data = try? Data(contentsOf: posesURL), let text = String(data: data, encoding: .utf8) else {
+            return []
+        }
+        var points: [SIMD2<Float>] = []
+        for line in text.split(separator: "\n") {
+            guard let lineData = line.data(using: .utf8),
+                  let record = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                  let transform = record["camera_transform"] as? [[Double]],
+                  transform.count >= 3, transform[0].count >= 4, transform[2].count >= 4
+            else { continue }
+            // ScanSessionManager.matrixToArray()의 row-major 표현: arr[row][col].
+            // 마지막 열(col 3)이 world 좌표계의 카메라 위치(x, y, z).
+            points.append(SIMD2(Float(transform[0][3]), Float(transform[2][3])))
+        }
+        return points
     }
 }

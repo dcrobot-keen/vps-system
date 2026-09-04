@@ -104,9 +104,40 @@
     해상도 자동 하향, 빈 입력 시 nil). `render(meshAnchors:scanPathXZ:)` 자체는
     `ARMeshAnchor`를 테스트에서 못 만들어 미검증 — 실기기/시뮬레이터 실행으로
     확인 필요(아래 실기 검증 항목 참고).
-  - [ ] 실기(시뮬레이터/실기기) 검증 — 실제 스캔에서 `floorplan.png`가 만들어지고
-    바닥/벽/경로가 그럴듯하게 보이는지 아직 확인 안 됨(코드 리뷰 + 단위 테스트만
-    거친 상태)
+  - [x] **실기 검증 완료(2026-09-04)** — 실제 스캔에서 `floorplan.png`가 "제법
+    그럴듯하게" 나옴을 확인(사용자 실기기 확인).
+- **1.5단계(이번, 추가 요청 반영)**: 위 확인 직후 두 가지를 더 요청받음 —
+  ① "텍스처 결과 보기"의 실제 사진 바닥 색이 `floorplan.png`에도 입혀지길 원함,
+  ② "위치 확인(서버 없이)" 화면에서 반투명 바닥 평면 + 실시간 위치를 AR 카메라
+  화면 위에 직접 겹쳐서 보고 싶어함(지금까지는 화면 상단의 별도 2D 개략도(Canvas)
+  뿐이었음). 둘 다 구현:
+  - **바닥 실사 색칠**: `TextureBaker.bake`에 `onBakedFaceColors` 콜백을 추가해
+    GLB export 직전 welded mesh의 face별 최종 색(홀 채우기까지 끝난 뒤)을 그대로
+    넘겨받는다 — 별도 GPU 패스 없이 이미 하던 베이킹 결과를 재사용. 이 mesh는
+    `scan.usdz`를 재로드한 것이라 classification이 없으므로, `floorplan.json`에
+    저장해둔 바닥 높이 대역(`floor_height_min/max`, ±3cm 허용)으로 "이 face가
+    바닥이었을 가능성이 높다"를 다시 판정한다(`FloorPlanRenderer.floorPatches`).
+    그 패치들을 기존 `floorplan.png`(분류 기반, 바닥=흰색) 위에 덧칠하고 경로/마커를
+    다시 그려 얹은 뒤(`FloorPlanRenderer.recolorFloor`) 같은 파일에 덮어쓴다
+    (`ProjectDetailView.recolorFloorPlan`, "텍스처 생성"/"텍스처 다시 생성" 버튼을
+    누를 때마다 같이 갱신됨). `floorplan.png`/`floorplan.json`이 없거나 바닥 높이
+    정보가 없으면(구버전 스캔, classification 미지원 기기에서 바닥이 하나도 안
+    잡힌 경우) 조용히 건너뜀 — 부가 기능이라 텍스처 베이킹 자체에 영향 없음.
+  - **위치확인 AR 오버레이**: `LocalizeSessionManager`가 `floorplan.png` +
+    `floorplan.json`(`FloorPlanRenderer.PersistedMeta`)으로 AR 평면 배치 정보
+    (`FloorPlanOverlay`: 중심 world (x,z), 바닥 높이(y), 실제 크기(m))를 한 번
+    계산해두고, 매 프레임 raw ARKit world 위치(GroundPose 변환 전 — floorplan.png와
+    같은 좌표계라 추가 변환 불필요)를 `worldPosition`으로 게시한다. `LocalizeView`의
+    `ARLocalizePreview`가 `SCNPlane`(반투명, opacity 0.6, `lightingModel = .constant`로
+    AR 조명 추정에 어두워지지 않게)을 그 위치/크기에 눕혀 놓고, 작은 구슬 마커를
+    `worldPosition`에 계속 옮겨 "지금 여기" 표시. 기존 상단 2D 개략도는 그대로 둠
+    (AR 오버레이가 실패해도 위치확인 자체는 동작해야 하므로 병행).
+    - [ ] **실기 검증 안 됨** — 이 환경(Windows, Xcode 없음)에서 SCNPlane 회전
+      방향(-90도, X축)과 텍스처 UV가 실제로 "화면에 보이는 대로" 바닥에 정확히
+      겹치는지 확인할 방법이 없었다(코드 상 `ARLocalizePreview` 주석에 명시). 만약
+      이미지가 뒤집히거나 회전돼 보이면 회전 부호/`contentsTransform` 조정 필요.
+    - [x] 순수 함수(`FloorPlanRenderer.floorPatches`/`recolorFloor`)는
+      `FloorPlanRendererTests`로 검증, 실제 CI에서 통과 확인 예정.
 - **2단계(미착수, 별도 작업)**: VPS 길찾기 경로(pathfinder route) 오버레이 —
   scan-to-map-studio에 "이 스캔의 vectorize된 그래프 내려주기" API가 먼저 필요하고,
   도착점 선택 UI, 고급 모드 서버 체인(업로드→스튜디오 처리 대기→pathfinder 호출)까지

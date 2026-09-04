@@ -114,6 +114,65 @@ final class FloorPlanRendererTests: XCTestCase {
         XCTAssertGreaterThan(result.resolutionMetersPerPixel, 0.05, "다운스케일됐으면 실제 해상도(m/px)는 기본값보다 커야 함")
     }
 
+    func testFloorPatchesFiltersOnlyFacesWithinHeightBand() throws {
+        // face 0: 세 정점 모두 y=0.05 (바닥 높이 대역 [-0.03, 0.13] 안). face 1:
+        // y=1.0 (분명히 밖) -- 텍스처 베이킹은 classification 없이 재로드한 mesh를
+        // 쓰므로, 높이만으로 "이건 바닥이었을 face"를 다시 골라내야 한다.
+        let positions: [SIMD3<Float>] = [
+            SIMD3(0, 0.05, 0), SIMD3(1, 0.05, 0), SIMD3(0, 0.05, 1),
+            SIMD3(5, 1.0, 5), SIMD3(6, 1.0, 5), SIMD3(5, 1.0, 6),
+        ]
+        let indices: [UInt32] = [0, 1, 2, 3, 4, 5]
+        let faceColors: [SIMD3<Float>] = [SIMD3(1, 0, 0), SIMD3(0, 1, 0)]
+
+        let patches = FloorPlanRenderer.floorPatches(
+            positions: positions, indices: indices, faceColors: faceColors,
+            floorHeightMin: 0.0, floorHeightMax: 0.1
+        )
+
+        XCTAssertEqual(patches.count, 1)
+        let patch = try XCTUnwrap(patches.first)
+        XCTAssertEqual(patch.triangle.a, SIMD2(0, 0))
+        XCTAssertEqual(patch.triangle.b, SIMD2(1, 0))
+        XCTAssertEqual(patch.triangle.c, SIMD2(0, 1))
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        patch.color.getRed(&r, green: &g, blue: &b, alpha: &a)
+        XCTAssertEqual(Double(r), 1, accuracy: 0.01)
+        XCTAssertEqual(Double(g), 0, accuracy: 0.01)
+        XCTAssertEqual(Double(b), 0, accuracy: 0.01)
+    }
+
+    func testRecolorFloorPaintsPatchWithoutDisturbingWallOrBackground() throws {
+        let floor = FloorPlanRenderer.Triangle(a: SIMD2(0, 0), b: SIMD2(2, 0), c: SIMD2(0, 2))
+        let base = try XCTUnwrap(
+            FloorPlanRenderer.rasterize(floorTriangles: [floor], wallTriangles: [], scanPathXZ: [])
+        )
+
+        // 바닥 삼각형의 왼쪽 아래 구석만 덮는 작은 패치를 빨강으로 칠한다.
+        let patch = FloorPlanRenderer.Triangle(a: SIMD2(0.1, 0.1), b: SIMD2(0.9, 0.1), c: SIMD2(0.1, 0.9))
+        let recolored = FloorPlanRenderer.recolorFloor(
+            baseImage: base.image,
+            floorPatches: [(patch, .red)],
+            resolutionMetersPerPixel: base.resolutionMetersPerPixel,
+            originX: base.originX, originTopZ: base.originTopZ,
+            scanPathXZ: []
+        )
+
+        // (0.3, 0.3)는 패치 안 -> 빨강.
+        let insidePatch = pixelColor(in: recolored, x: 16, y: 44)
+        XCTAssertGreaterThan(Int(insidePatch.r), Int(insidePatch.g) + 100)
+
+        // (1.5, 0.3)은 원래 바닥(흰색)이지만 패치 밖 -> 그대로 흰색.
+        let outsidePatch = pixelColor(in: recolored, x: 40, y: 44)
+        XCTAssertGreaterThan(outsidePatch.r, 240)
+        XCTAssertGreaterThan(outsidePatch.g, 240)
+        XCTAssertGreaterThan(outsidePatch.b, 240)
+
+        // (-0.4, 2.4)는 배경(회색) -> 그대로 회색.
+        let background = pixelColor(in: recolored, x: 2, y: 2)
+        XCTAssertTrue((195...215).contains(Int(background.r)))
+    }
+
     func testEmptyInputReturnsNil() {
         XCTAssertNil(FloorPlanRenderer.rasterize(floorTriangles: [], wallTriangles: [], scanPathXZ: []))
         // 경로만 있고 바닥/벽이 하나도 없으면 "겹쳐 그릴 바닥 자체가 없다"는 뜻이라

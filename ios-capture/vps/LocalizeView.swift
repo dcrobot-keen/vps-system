@@ -1,4 +1,5 @@
 import ARKit
+import SceneKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -23,8 +24,12 @@ struct LocalizeView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            ARLocalizePreview(session: manager.session)
-                .ignoresSafeArea()
+            ARLocalizePreview(
+                session: manager.session,
+                overlay: manager.floorPlanOverlay,
+                worldPosition: manager.worldPosition
+            )
+            .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 topDownView
@@ -164,10 +169,14 @@ struct LocalizeView: View {
     }
 }
 
-/// 재국지화 자체는 mesh 시각화가 필요 없어 ScanView.ARPreview보다 훨씬 가볍다
-/// (ARSCNViewDelegate 불필요).
+/// 재국지화 자체는 mesh 시각화가 필요 없어 ScanView.ARPreview보다 훨씬 가볍지만,
+/// 바닥 오버레이(SCNPlane)와 실시간 위치 마커는 SceneKit 노드로 직접 얹는다 --
+/// Coordinator가 두 노드를 한 번만 만들고 이후엔 위치/이미지만 갱신한다(매 프레임
+/// updateUIView가 불려도 노드를 다시 만들지 않도록).
 private struct ARLocalizePreview: UIViewRepresentable {
     let session: ARSession
+    let overlay: FloorPlanOverlay?
+    let worldPosition: SIMD3<Float>?
 
     func makeUIView(context: Context) -> ARSCNView {
         let view = ARSCNView(frame: .zero)
@@ -176,7 +185,75 @@ private struct ARLocalizePreview: UIViewRepresentable {
         return view
     }
 
-    func updateUIView(_ uiView: ARSCNView, context: Context) {}
+    func updateUIView(_ uiView: ARSCNView, context: Context) {
+        context.coordinator.apply(overlay: overlay, worldPosition: worldPosition, to: uiView.scene)
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    /// floorplan.png를 실제 바닥 위에 반투명하게 겹치고(색이 AR 조명 추정 때문에
+    /// 어두워지지 않도록 lightingModel = .constant), 지금 위치를 작은 구슬 마커로
+    /// 보여준다. 평면/마커 모두 world 좌표(ARSession 좌표계, GroundPose 변환 없음)에
+    /// 그대로 놓는다 -- floorplan.png를 만들 때 쓴 좌표계와 같아서 추가 변환이
+    /// 필요 없다.
+    ///
+    /// 주의: SCNPlane 회전 방향(-90도, X축)과 이미지 UV가 실제로 "화면에서 보이는
+    /// 대로" 바닥에 겹치는지는 이 환경(Windows, Xcode 없음)에서 실기기로 확인할
+    /// 방법이 없었다 -- 만약 이미지가 좌우/상하로 뒤집혀 보이면 회전 부호나
+    /// material.diffuse.contentsTransform을 조정해야 한다.
+    final class Coordinator {
+        private var planeNode: SCNNode?
+        private var markerNode: SCNNode?
+        private var appliedImage: UIImage?
+
+        func apply(overlay: FloorPlanOverlay?, worldPosition: SIMD3<Float>?, to scene: SCNScene) {
+            if let overlay, appliedImage !== overlay.image {
+                planeNode?.removeFromParentNode()
+                let plane = SCNPlane(width: CGFloat(overlay.worldWidth), height: CGFloat(overlay.worldDepth))
+                let material = SCNMaterial()
+                material.diffuse.contents = overlay.image
+                material.lightingModel = .constant
+                material.isDoubleSided = true
+                plane.materials = [material]
+
+                let node = SCNNode(geometry: plane)
+                node.opacity = 0.6
+                // SCNPlane은 로컬 XY 평면(법선 +Z)에 놓이므로, world XZ 평면(실제
+                // 바닥, 법선 +Y)에 눕히려면 로컬 X축으로 -90도 돌린다.
+                node.eulerAngles = SCNVector3(-Float.pi / 2, 0, 0)
+                node.position = SCNVector3(overlay.centerX, overlay.floorY, overlay.centerZ)
+                scene.rootNode.addChildNode(node)
+
+                planeNode = node
+                appliedImage = overlay.image
+            } else if overlay == nil, planeNode != nil {
+                planeNode?.removeFromParentNode()
+                planeNode = nil
+                appliedImage = nil
+            }
+
+            guard let worldPosition else {
+                markerNode?.isHidden = true
+                return
+            }
+            if markerNode == nil {
+                let marker = Self.makeMarkerNode()
+                scene.rootNode.addChildNode(marker)
+                markerNode = marker
+            }
+            markerNode?.isHidden = false
+            markerNode?.position = SCNVector3(worldPosition.x, worldPosition.y, worldPosition.z)
+        }
+
+        private static func makeMarkerNode() -> SCNNode {
+            let sphere = SCNSphere(radius: 0.08)
+            let material = SCNMaterial()
+            material.diffuse.contents = UIColor.cyan
+            material.lightingModel = .constant
+            sphere.materials = [material]
+            return SCNNode(geometry: sphere)
+        }
+    }
 }
 
 /// 궤적 점들 + 현재 위치를 감싸는 정사각형 범위를 잡아 Canvas 크기에 맞춰

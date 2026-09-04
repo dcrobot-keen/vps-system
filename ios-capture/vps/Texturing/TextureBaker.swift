@@ -162,7 +162,16 @@ enum TextureBaker {
 
     // MARK: - 메인 진입점
 
-    static func bake(projectURL: URL, outputURL: URL, options: Options = Options(), onProgress: ((Progress) -> Void)? = nil) throws {
+    /// `onBakedFaceColors`: welded mesh(재로드한 scan.usdz 기준이라 classification은
+    /// 없음)의 face별 최종 색(홀 채우기까지 끝난 뒤)을 넘겨준다 -- 별도 GPU 패스 없이
+    /// 같은 베이킹 결과에서 `ProjectDetailView`가 floorplan.png의 바닥 색을 다시
+    /// 칠하는 데 재사용한다(`FloorPlanRenderer.floorPatches`). GLB export 직전에
+    /// 딱 한 번 호출된다.
+    static func bake(
+        projectURL: URL, outputURL: URL, options: Options = Options(),
+        onProgress: ((Progress) -> Void)? = nil,
+        onBakedFaceColors: ((_ positions: [SIMD3<Float>], _ indices: [UInt32], _ faceColors: [SIMD3<Float>]) -> Void)? = nil
+    ) throws {
         guard let device = MTLCreateSystemDefaultDevice(),
               let commandQueue = device.makeCommandQueue()
         else { throw BakeError.deviceUnavailable }
@@ -494,6 +503,8 @@ enum TextureBaker {
         let seenCount = seen.filter { $0 }.count
         let visitedCount = visited.filter { $0 }.count
         logger.debug("faces: \(seenCount)/\(faceCount) directly seen, \(visitedCount)/\(faceCount) covered after BFS propagation, \(faceCount - visitedCount) fell back to flat gray")
+
+        onBakedFaceColors?(mesh.positions, mesh.indices, faceColors)
 
         for py in 0..<textureSize {
             for px in 0..<textureSize {

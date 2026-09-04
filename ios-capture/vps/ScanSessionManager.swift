@@ -261,6 +261,11 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         let url = outputDir.appendingPathComponent("floorplan.png")
         do {
             try pngData.write(to: url)
+            // floorplan.png는 픽셀만 담고 있어서, world <-> pixel 매핑과 바닥 높이를
+            // 나중에(텍스처 베이킹 후 바닥 재색칠, 위치확인 AR 오버레이) 다시 알려면
+            // 이 사이드카가 있어야 한다 -- Result.metadataDictionary 참고.
+            let metaData = try JSONSerialization.data(withJSONObject: result.metadataDictionary, options: [.prettyPrinted])
+            try metaData.write(to: outputDir.appendingPathComponent("floorplan.json"))
             logger.debug("floorplan.png 저장 완료 (\(result.widthPx)x\(result.heightPx)px, \(result.resolutionMetersPerPixel) m/px)")
             return ", 바닥 평면 이미지 저장됨"
         } catch {
