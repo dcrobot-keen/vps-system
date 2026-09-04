@@ -11,11 +11,22 @@ final class ServerSettingsStore: ObservableObject {
         didSet { UserDefaults.standard.set(serverURLString, forKey: Self.serverURLKey) }
     }
 
+    /// "고급 모드" — 서버 업로드 같은 로봇 스택 연동 기능을 켜는 스위치. 기본 꺼짐.
+    /// 일반 사용자(App Store)에게 앱은 서버 없이 완결된 LiDAR 스캐너여야 하고, 서버
+    /// 연동은 우리 로봇 시스템을 쓰는 경우에만 의미가 있어서 설정 안쪽에 숨긴다
+    /// (PRODUCT-PLAN.md "방향 C"). 다른 화면은 `@AppStorage(ServerSettingsStore
+    /// .advancedModeKey)`로 같은 값을 읽는다.
+    @Published var isAdvancedModeEnabled: Bool {
+        didSet { UserDefaults.standard.set(isAdvancedModeEnabled, forKey: Self.advancedModeKey) }
+    }
+
+    static let advancedModeKey = "vpsAdvancedModeEnabled"
     private static let serverURLKey = "vpsServerURLString"
     private static let jobStatusesKey = "vpsUploadJobStatuses"
 
     init() {
         serverURLString = UserDefaults.standard.string(forKey: Self.serverURLKey) ?? ""
+        isAdvancedModeEnabled = UserDefaults.standard.bool(forKey: Self.advancedModeKey)
     }
 
     /// 입력값이 스킴/호스트를 갖춘 URL이 아니면 nil -- 업로드 버튼을 그 경우

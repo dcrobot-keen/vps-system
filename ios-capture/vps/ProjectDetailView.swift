@@ -36,6 +36,10 @@ struct ProjectDetailView: View {
     @State private var selectedPhotoIndex = 0
     @State private var isShowingThumbnailGrid = false
 
+    /// 서버 업로드는 로봇 스택 연동용이라 설정의 "고급 모드"가 켜져 있을 때만
+    /// 노출한다 -- 일반 사용자에겐 이 앱이 서버 없이 완결된 스캐너여야 한다.
+    @AppStorage(ServerSettingsStore.advancedModeKey) private var isAdvancedModeEnabled = false
+
     private let columns = [GridItem(.adaptive(minimum: 90), spacing: 4)]
 
     var body: some View {
@@ -55,7 +59,9 @@ struct ProjectDetailView: View {
                     textureBakeSection
                 }
 
-                vpsUploadSection
+                if isAdvancedModeEnabled {
+                    vpsUploadSection
+                }
 
                 if project.hasWorldMap {
                     Button {
