@@ -142,21 +142,23 @@
     누를 때마다 같이 갱신됨). `floorplan.png`/`floorplan.json`이 없거나 바닥 높이
     정보가 없으면(구버전 스캔, classification 미지원 기기에서 바닥이 하나도 안
     잡힌 경우) 조용히 건너뜀 — 부가 기능이라 텍스처 베이킹 자체에 영향 없음.
-  - **위치확인 AR 오버레이**: `LocalizeSessionManager`가 `floorplan.png` +
-    `floorplan.json`(`FloorPlanRenderer.PersistedMeta`)으로 AR 평면 배치 정보
-    (`FloorPlanOverlay`: 중심 world (x,z), 바닥 높이(y), 실제 크기(m))를 한 번
-    계산해두고, 매 프레임 raw ARKit world 위치(GroundPose 변환 전 — floorplan.png와
-    같은 좌표계라 추가 변환 불필요)를 `worldPosition`으로 게시한다. `LocalizeView`의
-    `ARLocalizePreview`가 `SCNPlane`(반투명, opacity 0.6, `lightingModel = .constant`로
-    AR 조명 추정에 어두워지지 않게)을 그 위치/크기에 눕혀 놓고, 작은 구슬 마커를
-    `worldPosition`에 계속 옮겨 "지금 여기" 표시. 기존 상단 2D 개략도는 그대로 둠
-    (AR 오버레이가 실패해도 위치확인 자체는 동작해야 하므로 병행).
-    - [ ] **실기 검증 안 됨** — 이 환경(Windows, Xcode 없음)에서 SCNPlane 회전
-      방향(-90도, X축)과 텍스처 UV가 실제로 "화면에 보이는 대로" 바닥에 정확히
-      겹치는지 확인할 방법이 없었다(코드 상 `ARLocalizePreview` 주석에 명시). 만약
-      이미지가 뒤집히거나 회전돼 보이면 회전 부호/`contentsTransform` 조정 필요.
-    - [x] 순수 함수(`FloorPlanRenderer.floorPatches`/`recolorFloor`)는
-      `FloorPlanRendererTests`로 검증, 실제 CI에서 통과 확인 예정.
+  - **위치확인 2D 배경 지도(오해 정정, 2026-09-04)**: 처음엔 "AR 카메라 화면 위에
+    반투명 바닥을 3D로 직접 얹는" 것으로 이해해 `SCNPlane` 기반 AR 오버레이를
+    구현했는데, 사용자가 다시 확인해보니 실제로 원한 건 **기존에 이미 있던 상단
+    2D 개략도(topDownView Canvas — 궤적 점 + 현재 위치 화살표)의 배경으로
+    `floorplan.png`를 까는 것**이었다. AR 3D 버전은 되돌리고(회전/텍스처 UV 방향을
+    실기 없이 검증할 수 없어 리스크만 크고 요청과도 안 맞았음) 아래로 교체:
+    `LocalizeSessionManager`가 `floorplan.png` + `floorplan.json`을
+    scan_basemap(GroundPose, `(x, -z)`) 좌표계로 옮긴 `FloorPlanBackground`(바운딩
+    박스 + 미리 세로로 뒤집어둔 이미지 — floorplan.png는 row가 커질수록 world Z가
+    작아지게 저장되는데 그건 GroundPose y = -z 기준 row가 커질수록 y가 커진다는
+    뜻이라, `TopDownBounds.project`의 "y가 클수록 화면 위" 관례와 맞추려면 미리
+    뒤집어야 함)를 한 번 계산해두고, `LocalizeView.topDownView`가 궤적/위치를
+    그리기 전에 그 배경을 0.7 투명도로 먼저 그린다. `TopDownBounds`도 배경의
+    바운딩 박스를 항상 포함하도록 넓혀서(전엔 궤적/현재 위치만 보고 매 프레임
+    확대·축소가 바뀌었음) "스캔한 방 전체 지도 위에 내 위치" 구도가 안정적으로
+    유지되게 했다. 좌표 변환(부호/뒤집기 방향)은 논리적으로 검증했지만 실기 확인은
+    아직 안 됨.
 - **2단계(미착수, 별도 작업)**: VPS 길찾기 경로(pathfinder route) 오버레이 —
   scan-to-map-studio에 "이 스캔의 vectorize된 그래프 내려주기" API가 먼저 필요하고,
   도착점 선택 UI, 고급 모드 서버 체인(업로드→스튜디오 처리 대기→pathfinder 호출)까지

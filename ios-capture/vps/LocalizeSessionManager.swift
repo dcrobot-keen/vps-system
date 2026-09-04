@@ -3,19 +3,22 @@ import Combine
 import Foundation
 import UIKit
 
-/// LocalizeView가 AR 카메라 화면 위에 얹는 반투명 바닥 평면(floorplan.png)의 배치
-/// 정보. `LocalizeSessionManager.start(project:)`가 `floorplan.png` +
+/// `LocalizeView`의 상단 2D 개략도(topDownView Canvas)에 배경으로 깔 floorplan.png.
+/// `LocalizeSessionManager.start(project:)`가 `floorplan.png` +
 /// `FloorPlanRenderer.PersistedMeta`(floorplan.json)로 한 번만 계산해둔다 -- 세션
 /// 내내 안 바뀐다.
-struct FloorPlanOverlay {
+struct FloorPlanBackground {
+    /// scan_basemap(GroundPose, (x, -z)) 좌표계 기준으로 이미 위아래를 뒤집어둔
+    /// 이미지 -- `TopDownBounds.project`가 y가 클수록 화면 위쪽으로 그리는데,
+    /// floorplan.png는 row가 클수록(아래로 갈수록) world Z가 작아지도록(= GroundPose
+    /// y가 커지도록) 저장돼 있어서, 그대로 그리면 위아래가 뒤집혀 보인다.
     let image: UIImage
-    /// 평면 중심의 world X/Z, 그리고 그 평면이 놓일 world Y(바닥 높이).
-    let centerX: Float
-    let centerZ: Float
-    let floorY: Float
-    /// 평면의 실제 크기(미터) -- widthPx/heightPx * resolution.
-    let worldWidth: Float
-    let worldDepth: Float
+    /// scan_basemap 좌표계 기준 이 이미지의 바운딩 박스 -- topDownView가 이 배경을
+    /// 어디에 그릴지, 그리고 화면 줌 범위(TopDownBounds)를 잡는 데 쓴다.
+    let minX: Double
+    let maxX: Double
+    let minY: Double
+    let maxY: Double
 }
 
 enum LocalizePhase: Equatable {
@@ -43,14 +46,10 @@ final class LocalizeSessionManager: NSObject, ObservableObject, ARSessionDelegat
     /// 스캔 당시 훑었던 범위를 배경에 흐리게 깔아주면 방향을 잡기 쉽다.
     @Published private(set) var trajectory: [SIMD2<Double>] = []
     @Published private(set) var calibration: RegistrationTransform?
-    /// AR 화면에 얹을 반투명 바닥 평면 -- floorplan.png/floorplan.json이 없거나
-    /// (구버전 스캔) 바닥 높이 정보가 없으면(classification 미지원 기기에서 바닥이
-    /// 하나도 안 잡힌 경우) nil -- 그때는 기존처럼 카메라 화면 + 상단 2D 개략도만
-    /// 보여준다(부가 기능이라 실패해도 위치확인 자체는 그대로 동작해야 함).
-    @Published private(set) var floorPlanOverlay: FloorPlanOverlay?
-    /// 이번 프레임의 raw ARKit world 위치(GroundPose 변환 전) -- floorPlanOverlay와
-    /// 같은 좌표계라 AR 마커를 그 위에 그대로 얹을 수 있다.
-    @Published private(set) var worldPosition: SIMD3<Float>?
+    /// 상단 2D 개략도의 배경 지도 -- floorplan.png/floorplan.json이 없으면(구버전
+    /// 스캔) nil, 그때는 기존처럼 배경 없이 궤적/위치만 보여준다(부가 기능이라
+    /// 실패해도 위치확인 자체는 그대로 동작해야 함).
+    @Published private(set) var floorPlanBackground: FloorPlanBackground?
 
     private var projectURL: URL?
 
@@ -63,7 +62,7 @@ final class LocalizeSessionManager: NSObject, ObservableObject, ARSessionDelegat
         projectURL = project.url
         calibration = RegistrationTransform.load(from: project.url)
         loadTrajectory(from: project.url)
-        floorPlanOverlay = Self.loadFloorPlanOverlay(from: project.url)
+        floorPlanBackground = Self.loadFloorPlanBackground(from: project.url)
 
         let worldMapURL = project.url.appendingPathComponent("worldmap.arexperience")
         guard let data = try? Data(contentsOf: worldMapURL),
@@ -106,17 +105,11 @@ final class LocalizeSessionManager: NSObject, ObservableObject, ARSessionDelegat
         }
 
         let pose = GroundPose.fromARKitTransform(frame.camera.transform)
-        let worldPos = SIMD3<Float>(
-            frame.camera.transform.columns.3.x,
-            frame.camera.transform.columns.3.y,
-            frame.camera.transform.columns.3.z
-        )
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.phase = .tracking
             self.groundPose = pose
             self.mapPose = self.calibration?.scanBasemapToMap(pose)
-            self.worldPosition = worldPos
         }
     }
 
@@ -126,28 +119,47 @@ final class LocalizeSessionManager: NSObject, ObservableObject, ARSessionDelegat
         }
     }
 
-    // MARK: - AR 바닥 오버레이
+    // MARK: - 2D 개략도 배경 지도
 
-    /// floorplan.png + floorplan.json(FloorPlanRenderer.PersistedMeta)에서 AR
-    /// 평면 배치 정보를 만든다. 바닥 높이(floor_height_min/max)가 없으면(바닥
-    /// 삼각형이 하나도 안 잡힌 스캔) 평면을 어디 높이에 놓을지 알 수 없어 nil을
-    /// 반환한다 -- 그 경우 AR 오버레이만 빠지고 위치확인 자체는 그대로 동작한다.
-    private static func loadFloorPlanOverlay(from projectURL: URL) -> FloorPlanOverlay? {
+    /// floorplan.png + floorplan.json(FloorPlanRenderer.PersistedMeta)을
+    /// scan_basemap(GroundPose) 좌표계로 옮긴다.
+    ///
+    /// world -> GroundPose 매핑은 `GroundPose.fromARKitTransform`과 같다(x는 그대로,
+    /// z는 부호 반전: y = -z). floorplan.png는 row가 커질수록(아래로 갈수록) world
+    /// Z가 작아지도록 저장돼 있는데(`FloorPlanRenderer` 참고), 그 말은 GroundPose
+    /// y = -z 기준으로는 row가 커질수록 y가 커진다는 뜻이다. `TopDownBounds.project`는
+    /// y가 클수록 화면 위쪽에 그리므로, floorplan.png를 그대로(가공 없이) 그리면
+    /// 위아래가 뒤집혀 보인다 -- 그래서 여기서 미리 세로로 뒤집어둔다.
+    private static func loadFloorPlanBackground(from projectURL: URL) -> FloorPlanBackground? {
         guard let meta = FloorPlanRenderer.PersistedMeta.load(from: projectURL),
-              let floorHeightMin = meta.floorHeightMin, let floorHeightMax = meta.floorHeightMax,
-              let image = UIImage(contentsOfFile: projectURL.appendingPathComponent("floorplan.png").path)
+              let image = UIImage(contentsOfFile: projectURL.appendingPathComponent("floorplan.png").path),
+              let flipped = verticallyFlipped(image)
         else { return nil }
 
-        let worldWidth = Float(meta.widthPx) * meta.resolutionMetersPerPixel
-        let worldDepth = Float(meta.heightPx) * meta.resolutionMetersPerPixel
-        return FloorPlanOverlay(
-            image: image,
-            centerX: meta.originX + worldWidth / 2,
-            centerZ: meta.originTopZ - worldDepth / 2,
-            floorY: (floorHeightMin + floorHeightMax) / 2,
-            worldWidth: worldWidth,
-            worldDepth: worldDepth
-        )
+        let worldWidth = Double(meta.widthPx) * Double(meta.resolutionMetersPerPixel)
+        let worldDepth = Double(meta.heightPx) * Double(meta.resolutionMetersPerPixel)
+        let minX = Double(meta.originX)
+        let maxX = minX + worldWidth
+        // GroundPose y = -z. world Z는 [originTopZ - worldDepth, originTopZ] 범위이므로
+        // y = -z는 [-originTopZ, worldDepth - originTopZ] 범위가 된다.
+        let minY = -Double(meta.originTopZ)
+        let maxY = minY + worldDepth
+        return FloorPlanBackground(image: flipped, minX: minX, maxX: maxX, minY: minY, maxY: maxY)
+    }
+
+    /// `UIImage.draw(at:)`는 항상 이미지 row 0을 그리는 rect의 위쪽에 놓으므로,
+    /// 실제로 위아래를 뒤집으려면 그리기 전에 컨텍스트 자체를 뒤집어야 한다.
+    private static func verticallyFlipped(_ image: UIImage) -> UIImage? {
+        guard image.size.width > 0, image.size.height > 0 else { return nil }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let renderer = UIGraphicsImageRenderer(size: image.size, format: format)
+        return renderer.image { context in
+            context.cgContext.translateBy(x: 0, y: image.size.height)
+            context.cgContext.scaleBy(x: 1, y: -1)
+            image.draw(at: .zero)
+        }
     }
 
     // MARK: - 궤적 로드(배경 표시용)
