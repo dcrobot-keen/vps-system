@@ -2,6 +2,11 @@ import SwiftUI
 
 @main
 struct DCVPSCaptureApp: App {
+    // VPS 업로드가 백그라운드 URLSession을 쓰는데, 그 완료 이벤트를 받으려면
+    // UIApplicationDelegate가 있어야 한다(SwiftUI App 라이프사이클엔 없음) --
+    // AppDelegate.swift 참고.
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     var body: some Scene {
         WindowGroup {
             if DeviceSupport.isScanningSupported {
