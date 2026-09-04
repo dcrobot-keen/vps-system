@@ -638,6 +638,136 @@
           }
         }
       }
+    },
+    "저장 공간": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Storage"
+          }
+        }
+      }
+    },
+    "남은 공간": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Available"
+          }
+        }
+      }
+    },
+    "스캔 데이터": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scan data"
+          }
+        }
+      }
+    },
+    "스캔 데이터는 이 앱이 저장한 모든 스캔 폴더의 합계입니다. 스캔은 각 스캔 화면에서 지울 수 있습니다.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scan data is the total of every scan folder this app has saved. Delete scans from each scan's screen."
+          }
+        }
+      }
+    },
+    "정보": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "About"
+          }
+        }
+      }
+    },
+    "버전": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Version"
+          }
+        }
+      }
+    },
+    "개인정보 처리방침": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privacy Policy"
+          }
+        }
+      }
+    },
+    "스캔 삭제": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete Scan"
+          }
+        }
+      }
+    },
+    "이 스캔을 삭제할까요?": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete this scan?"
+          }
+        }
+      }
+    },
+    "사진·depth·mesh 등 이 스캔의 파일이 모두 지워지며 되돌릴 수 없습니다.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All of this scan's files (photos, depth, mesh, and more) will be deleted. This cannot be undone."
+          }
+        }
+      }
+    },
+    "합친 mesh 보기": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View Merged Mesh"
+          }
+        }
+      }
+    },
+    "합친 mesh": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Merged Mesh"
+          }
+        }
+      }
+    },
+    "합치는 중…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Merging…"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -15,6 +15,15 @@ import SwiftUI
 /// 지연/타이밍 문제 자체가 없어진다.
 struct ProjectDetailView: View {
     let project: ScanProject
+    /// 프로젝트 안에서의 표시 이름("스캔 2") -- ProjectGroupDetailView가 넘긴다. 없으면
+    /// 폴더 이름을 그대로 제목으로 쓴다.
+    var displayName: String? = nil
+    /// 스캔 폴더를 지운 뒤 호출 -- 프로젝트 인덱스에서도 빼고 목록을 갱신하는 건
+    /// 호출부(ProjectGroupDetailView) 몫.
+    var onDelete: (() -> Void)? = nil
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var isConfirmingDelete = false
 
     @State private var isShowingMeshViewer = false
     @State private var rgbURLs: [URL] = []
@@ -127,8 +136,29 @@ struct ProjectDetailView: View {
             }
             .padding()
         }
-        .navigationTitle(project.id)
+        .navigationTitle(displayName ?? project.id)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    Button(role: .destructive) {
+                        isConfirmingDelete = true
+                    } label: {
+                        Label("스캔 삭제", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+            }
+        }
+        // 스캔 폴더를 실제로 지우는 유일한 곳 -- 프로젝트 삭제/제거는 인덱스만 건드리고
+        // 폴더는 남기므로, 용량을 되찾으려면 여기서 지워야 한다(2026-09-04 IA 검토 #7).
+        .confirmationDialog("이 스캔을 삭제할까요?", isPresented: $isConfirmingDelete, titleVisibility: .visible) {
+            Button("스캔 삭제", role: .destructive) { deleteScan() }
+            Button("취소", role: .cancel) {}
+        } message: {
+            Text("사진·depth·mesh 등 이 스캔의 파일이 모두 지워지며 되돌릴 수 없습니다.")
+        }
         .onAppear {
             loadRGBList()
             hasTexturedGLB = FileManager.default.fileExists(atPath: texturedGLBURL.path)
@@ -465,8 +495,19 @@ struct ProjectDetailView: View {
         }
     }
 
+    private func deleteScan() {
+        try? FileManager.default.removeItem(at: project.url)
+        onDelete?()
+        dismiss()
+    }
+
     private var summarySection: some View {
         VStack(alignment: .leading, spacing: 4) {
+            if displayName != nil {
+                // 제목이 "스캔 2"로 바뀌었으니 실제 폴더 이름은 여기 부제로.
+                Text(project.id)
+                    .font(.caption.monospaced())
+            }
             if let frameCount = project.frameCount {
                 Text("\(frameCount) 프레임")
             }

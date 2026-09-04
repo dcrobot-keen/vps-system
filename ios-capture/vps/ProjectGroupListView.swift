@@ -12,6 +12,7 @@ struct ProjectGroupListView: View {
     @State private var isShowingNewProjectSheet = false
     @State private var newProjectName = ""
     @State private var isShowingServerSettings = false
+    @State private var isShowingImportedFiles = false
 
     var body: some View {
         NavigationStack {
@@ -39,6 +40,11 @@ struct ProjectGroupListView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         Button {
+                            isShowingImportedFiles = true
+                        } label: {
+                            Label("가져온 파일", systemImage: "square.and.arrow.down")
+                        }
+                        Button {
                             isShowingServerSettings = true
                         } label: {
                             Label("설정", systemImage: "gearshape")
@@ -47,6 +53,9 @@ struct ProjectGroupListView: View {
                         Image(systemName: "ellipsis.circle")
                     }
                 }
+            }
+            .sheet(isPresented: $isShowingImportedFiles) {
+                ImportedFilesView()
             }
             .sheet(isPresented: $isShowingNewProjectSheet) {
                 NewScanGroupSheet(name: $newProjectName, nameTaken: store.groupExists(named:)) {

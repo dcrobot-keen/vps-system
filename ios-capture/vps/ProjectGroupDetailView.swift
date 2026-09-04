@@ -11,6 +11,7 @@ struct ProjectGroupDetailView: View {
     @State private var pendingScanName = ""
 
     @State private var isShowingAlignment = false
+    @State private var isShowingMergedViewer = false
     @State private var isExporting = false
     @State private var exportShareItem: ShareItem?
     @State private var exportErrorMessage: String?
@@ -57,11 +58,14 @@ struct ProjectGroupDetailView: View {
                 if let group, !scansInGroup.isEmpty {
                     List {
                         Section {
-                            ForEach(scansInGroup) { scan in
+                            ForEach(Array(scansInGroup.enumerated()), id: \.element.id) { index, scan in
                                 NavigationLink {
-                                    ProjectDetailView(project: scan)
+                                    ProjectDetailView(project: scan, displayName: "스캔 \(index + 1)") {
+                                        store.removeScan(scanID: scan.id, from: groupID)
+                                        scanStore.refresh()
+                                    }
                                 } label: {
-                                    scanRow(scan, isReference: scan.id == group.scanIDs.first)
+                                    scanRow(scan, index: index, isReference: index == 0)
                                 }
                                 .swipeActions {
                                     Button(role: .destructive) {
@@ -103,6 +107,13 @@ struct ProjectGroupDetailView: View {
                         }
                         .disabled(scansInGroup.count < 2)
 
+                        Button {
+                            isShowingMergedViewer = true
+                        } label: {
+                            Label("합친 mesh 보기", systemImage: "cube.transparent")
+                        }
+                        .disabled(!scansInGroup.contains { $0.hasUSDZ })
+
                         Menu {
                             ForEach(ExportFormat.allCases) { format in
                                 Button(format.label) { exportMerged(as: format) }
@@ -132,6 +143,9 @@ struct ProjectGroupDetailView: View {
                 }
             }
         }
+        .fullScreenCover(isPresented: $isShowingMergedViewer) {
+            MergedMeshViewer(scans: mergeInputs) { isShowingMergedViewer = false }
+        }
         .sheet(item: $exportShareItem) { item in
             ShareSheet(activityItems: [item.url])
         }
@@ -153,11 +167,26 @@ struct ProjectGroupDetailView: View {
         }
     }
 
-    private func scanRow(_ scan: ScanProject, isReference: Bool) -> some View {
+    /// 정렬 변환 포함 -- 미리보기(MergedMeshViewer)와 내보내기가 같은 입력을 쓴다.
+    private var mergeInputs: [ScanGroupMerger.ScanInput] {
+        guard let group else { return [] }
+        return scansInGroup.map {
+            ScanGroupMerger.ScanInput(folderURL: $0.url, alignment: group.alignment(for: $0.id))
+        }
+    }
+
+    /// 제목은 프로젝트 안 순번 + 찍은 시각("스캔 2 · 오후 3:12"), 폴더명은 부제
+    /// (2026-09-04 IA 검토 #1 -- 타임스탬프 폴더명은 읽기 어려움).
+    private func scanRow(_ scan: ScanProject, index: Int, isReference: Bool) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                Text(scan.id)
+                Text("스캔 \(index + 1)")
                     .font(.headline)
+                if let startTime = scan.startTime {
+                    Text("· \(startTime.formatted(date: .omitted, time: .shortened))")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
                 if isReference {
                     Text("기준")
                         .font(.caption2.weight(.semibold))
@@ -179,6 +208,9 @@ struct ProjectGroupDetailView: View {
             }
             .font(.caption)
             .foregroundStyle(.secondary)
+            Text(scan.id)
+                .font(.caption2.monospaced())
+                .foregroundStyle(.tertiary)
         }
         .padding(.vertical, 2)
     }
