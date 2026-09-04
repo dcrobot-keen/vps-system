@@ -36,6 +36,9 @@ struct ProjectDetailView: View {
     @State private var selectedPhotoIndex = 0
     @State private var isShowingThumbnailGrid = false
 
+    @State private var isShowingFloorPlan = false
+    @State private var floorPlanShareItem: ShareItem?
+
     /// 서버 업로드는 로봇 스택 연동용이라 설정의 "고급 모드"가 켜져 있을 때만
     /// 노출한다 -- 일반 사용자에겐 이 앱이 서버 없이 완결된 스캐너여야 한다.
     @AppStorage(ServerSettingsStore.advancedModeKey) private var isAdvancedModeEnabled = false
@@ -57,6 +60,16 @@ struct ProjectDetailView: View {
                     .buttonStyle(.borderedProminent)
 
                     textureBakeSection
+                }
+
+                if project.hasFloorPlan {
+                    Button {
+                        isShowingFloorPlan = true
+                    } label: {
+                        Label("바닥 평면 보기", systemImage: "square.grid.3x3.topleft.filled")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
                 }
 
                 if isAdvancedModeEnabled {
@@ -130,6 +143,16 @@ struct ProjectDetailView: View {
                 LocalizeView(project: project)
             }
         }
+        .fullScreenCover(isPresented: $isShowingFloorPlan) {
+            FloorPlanViewerView(
+                url: floorPlanURL,
+                onDismiss: { isShowingFloorPlan = false },
+                onShare: { floorPlanShareItem = ShareItem(url: floorPlanURL) }
+            )
+        }
+        .sheet(item: $floorPlanShareItem) { item in
+            ShareSheet(activityItems: [item.url])
+        }
         .fullScreenCover(isPresented: $isShowingTexturedViewer) {
             NavigationStack {
                 GLBSceneView(url: texturedGLBURL)
@@ -148,6 +171,10 @@ struct ProjectDetailView: View {
 
     private var texturedGLBURL: URL {
         project.url.appendingPathComponent("textured.glb")
+    }
+
+    private var floorPlanURL: URL {
+        project.url.appendingPathComponent("floorplan.png")
     }
 
     /// 사진을 mesh에 직접 프로젝션해서 텍스처를 굽는다(`TextureBaker`, Metal 기반,
@@ -430,6 +457,42 @@ private struct USDZSceneView: UIViewRepresentable {
             material.lightingModel = .physicallyBased
             geometry.materials = [material]
         }
+    }
+}
+
+/// FloorPlanRenderer가 만든 floorplan.png를 핀치줌으로 보여준다 (PhotoGalleryView의
+/// ZoomableImageView 재사용). 사진 갤러리와 달리 한 장뿐이라 페이지 넘김 없이 닫기/
+/// 공유 버튼만 얹는다.
+private struct FloorPlanViewerView: View {
+    let url: URL
+    let onDismiss: () -> Void
+    let onShare: () -> Void
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            Color.black.ignoresSafeArea()
+
+            ZoomableImageView(url: url)
+                .ignoresSafeArea()
+
+            HStack {
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .foregroundStyle(.white)
+                        .padding(10)
+                        .background(.black.opacity(0.5), in: Circle())
+                }
+                Spacer()
+                Button(action: onShare) {
+                    Image(systemName: "square.and.arrow.up")
+                        .foregroundStyle(.white)
+                        .padding(10)
+                        .background(.black.opacity(0.5), in: Circle())
+                }
+            }
+            .padding()
+        }
+        .statusBarHidden()
     }
 }
 

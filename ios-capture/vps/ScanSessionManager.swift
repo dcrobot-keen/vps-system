@@ -41,6 +41,12 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
     /// 아니라) TextureBaker가 실제로 쓰는 카메라 집합과 일치한다.
     private var recentCameraPositions: [simd_float3] = []
 
+    /// 세션 전체의 카메라 (x, z) 궤적 -- `recentCameraPositions`(최근 60프레임짜리
+    /// 슬라이딩 윈도)와 달리 끝까지 전부 쌓아둔다. 스캔이 끝난 뒤 `FloorPlanRenderer`가
+    /// 바닥 평면 위에 겹쳐 그릴 실제 이동 경로로 쓴다 -- 저장되는 프레임 수(보통
+    /// 수백~수천)만큼만 쌓이므로 메모리 부담은 없다.
+    private var scanPathXZ: [SIMD2<Float>] = []
+
     // MARK: - 스캔 가이드 임계값
     //
     // VPS DB 품질/텍스처 품질에 실제로 영향을 준다고 확인된 것들만 넣었다:
@@ -107,6 +113,7 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         lastCaptureTimestamp = 0
         lastCameraPosition = nil
         recentCameraPositions = []
+        scanPathXZ = []
         sessionStartTime = Date()
 
         let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -170,10 +177,11 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         let manifestStatus = writeManifest()
         let meshStatus = exportMesh(meshAnchors)
         let worldMapStatus = exportWorldMap(worldMap, error: worldMapError)
+        let floorPlanStatus = exportFloorPlan(meshAnchors, scanPathXZ: scanPathXZ)
         isRunning = false
         guidanceMessage = nil
         lastOutputDir = outputDir
-        statusMessage = "정지됨 (\(frameCount) 프레임, \(outputDir.lastPathComponent))\(posesCloseStatus)\(manifestStatus)\(meshStatus)\(worldMapStatus)"
+        statusMessage = "정지됨 (\(frameCount) 프레임, \(outputDir.lastPathComponent))\(posesCloseStatus)\(manifestStatus)\(meshStatus)\(worldMapStatus)\(floorPlanStatus)"
     }
 
     /// poses.jsonl 파일 핸들을 닫는다 -- 실패해도 이미 쓴 내용은 디스크에 남아있을
@@ -235,6 +243,32 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         }
     }
 
+    /// 바닥 평면 2D 이미지(floorplan.png) -- 온디바이스에서 즉석으로 만드는 대략
+    /// 버전(PRODUCT-PLAN.md "바닥 평면/경로 오버레이" 항목, 2026-09-04). classification이
+    /// 되면 실제 바닥/벽 mesh face로, 안 되면 높이 휴리스틱으로 만든다. scan.usdz와
+    /// 달리 다운스트림 파이프라인이 소비하는 계약(scan-format)의 일부가 아니라 앱
+    /// 자체 편의 산출물이라 스캔 포맷 회귀 게이트 대상은 아니다.
+    private func exportFloorPlan(_ meshAnchors: [ARMeshAnchor], scanPathXZ: [SIMD2<Float>]) -> String {
+        guard let outputDir else { return "" }
+        guard let result = FloorPlanRenderer.render(meshAnchors: meshAnchors, scanPathXZ: scanPathXZ) else {
+            logger.notice("바닥 평면 이미지 생성 실패 -- 바닥/벽으로 분류된 mesh face가 없음(mesh anchor 0개 또는 너무 짧은 스캔)")
+            return ", 바닥 평면 이미지 없음"
+        }
+        guard let pngData = result.image.pngData() else {
+            logger.error("floorplan.png 인코딩 실패")
+            return ", 바닥 평면 이미지 인코딩 실패"
+        }
+        let url = outputDir.appendingPathComponent("floorplan.png")
+        do {
+            try pngData.write(to: url)
+            logger.debug("floorplan.png 저장 완료 (\(result.widthPx)x\(result.heightPx)px, \(result.resolutionMetersPerPixel) m/px)")
+            return ", 바닥 평면 이미지 저장됨"
+        } catch {
+            logger.error("floorplan.png 쓰기 실패 -- \(error.localizedDescription, privacy: .public)")
+            return ", 바닥 평면 이미지 저장 실패(\(error.localizedDescription))"
+        }
+    }
+
     // MARK: - ARSessionDelegate
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
@@ -270,14 +304,16 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         let confidenceBuffer = depthData.confidenceMap
         appendPose(frame: frame, index: index)
 
-        recentCameraPositions.append(simd_float3(
+        let cameraPosition = simd_float3(
             frame.camera.transform.columns.3.x,
             frame.camera.transform.columns.3.y,
             frame.camera.transform.columns.3.z
-        ))
+        )
+        recentCameraPositions.append(cameraPosition)
         if recentCameraPositions.count > Self.textureCoverageWindowFrameCount {
             recentCameraPositions.removeFirst()
         }
+        scanPathXZ.append(SIMD2<Float>(cameraPosition.x, cameraPosition.z))
 
         processingQueue.async { [weak self] in
             guard let self else { return }

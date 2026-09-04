@@ -73,6 +73,46 @@
 - [ ] iCloud/Files 동기화, 프로젝트 이름 변경/정리 UI
 - [ ] 고급 모드 확장(정합 파일 자동 수신 등)
 
+### E. 바닥 평면 & 경로 오버레이 (2026-09-04 신규 요청)
+
+두 가지를 요청받음: ① 스캔 후 바닥만 2D 이미지로 export, ② 그 위에 VPS 길찾기 경로 +
+스캔 경로를 오버레이. 검토 결과 scan-to-map-studio에 이미 바닥 평면 생성
+(`slice_map.py`/`rasterize.py`/`vectorize.py`)과 pathfinder에 경로 계산 API
+(`/api/path/nodelink`, `/api/path/obstacle`)가 서버 쪽에 있지만, 둘 다 vectorize된
+그래프(GeoJSON)가 있어야 하고 그건 스튜디오 파이프라인 산출물이라 앱만으로는 못 만듦.
+그래서 스코프를 둘로 나누기로 사용자와 합의:
+
+- **1단계(이번, 완료)**: 온디바이스 즉석 버전. `FloorPlanRenderer.swift`(신규) —
+  스캔 종료 시점의 LiDAR mesh(`ARMeshAnchor`, `meshWithClassification` 지원 기기는
+  실제 바닥/벽 face classification 사용, 미지원 기기는 최저 높이 대역 휴리스틱으로
+  대체)에서 바닥을 위에서 내려다본 2D 이미지를 만들어 `scan_<name>/floorplan.png`로
+  저장(`ScanSessionManager.exportFloorPlan`, `scan.usdz`와 같은 시점에 같이 생성).
+  색 관례는 scan-to-map-studio/studio/rasterize.py(OccupancyGrid, ROS map_server
+  계열: free=흰색, occupied=검정, unknown=회색, resolution 0.05m/px)와 일부러
+  맞췄고, 경로/마커 색은 scan-to-map-studio/studio/viewer_html.py의 웹 뷰어와 같은
+  값(#3ba0ff/#ff3b3b)을 재사용 — 다른 저장소의 뷰어와 나란히 놓아도 같은 스캔으로
+  알아볼 수 있게. 이번 세션에서 실제로 이동한 카메라 경로(`poses.jsonl`과 같은
+  소스, `ScanSessionManager.scanPathXZ`)를 파란 선 + 시작(초록)/끝(빨강) 마커로
+  겹친다. `ProjectDetailView`에 "바닥 평면 보기" 버튼(조건: `project.hasFloorPlan`)
+  → 핀치줌 뷰어(`PhotoGalleryView`의 `ZoomableImageView` 재사용) + 공유 버튼
+  (기존 `ShareSheet` 재사용). `scan.usdz`와 달리 다운스트림이 소비하는 스캔 포맷
+  계약의 일부가 아니라 앱 자체 편의 산출물이라 스캔 포맷 회귀 게이트 대상은 아님.
+  - 순수 래스터화 로직(`FloorPlanRenderer.rasterize`, world-space 삼각형 + 경로
+    좌표만 받음, `ARMeshAnchor` 의존 없음 — `ScanRecordBuilder`를 `ARFrame`에서
+    분리한 것과 같은 이유/패턴)을 `ScanMeshTests/FloorPlanRendererTests.swift`로
+    검증(바닥=흰색, 벽=검정, 배경=회색, 경로=파랑, 시작/끝 마커 색, 초대형 스캔의
+    해상도 자동 하향, 빈 입력 시 nil). `render(meshAnchors:scanPathXZ:)` 자체는
+    `ARMeshAnchor`를 테스트에서 못 만들어 미검증 — 실기기/시뮬레이터 실행으로
+    확인 필요(아래 실기 검증 항목 참고).
+  - [ ] 실기(시뮬레이터/실기기) 검증 — 실제 스캔에서 `floorplan.png`가 만들어지고
+    바닥/벽/경로가 그럴듯하게 보이는지 아직 확인 안 됨(코드 리뷰 + 단위 테스트만
+    거친 상태)
+- **2단계(미착수, 별도 작업)**: VPS 길찾기 경로(pathfinder route) 오버레이 —
+  scan-to-map-studio에 "이 스캔의 vectorize된 그래프 내려주기" API가 먼저 필요하고,
+  도착점 선택 UI, 고급 모드 서버 체인(업로드→스튜디오 처리 대기→pathfinder 호출)까지
+  새로 설계해야 함 — vps-system/scan-to-map-studio/pathfinder 세 저장소에 걸친 별도
+  작업으로 남겨둠.
+
 ## 결정 (2026-09-04) — 4개 전부 완료
 1. ~~제품명(영/한) + 번들 ID~~ → **ScanMesh / 스캔메시**, `com.dcrobot.scanmesh`
 2. ~~개발자 계정 주체~~ → **개인**

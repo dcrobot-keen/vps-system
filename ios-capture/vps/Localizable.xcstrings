@@ -121,6 +121,16 @@
         }
       }
     },
+    "바닥 평면 보기" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "View Floor Plan"
+          }
+        }
+      }
+    },
     "mesh" : {
       "localizations" : {
         "en" : {
