@@ -164,6 +164,7 @@ struct ProjectDetailView: View {
             hasTexturedGLB = FileManager.default.fileExists(atPath: texturedGLBURL.path)
             loadProjectSize()
             resumeUploadIfNeeded()
+            migrateFloorPlanIfNeeded()
         }
         .fullScreenCover(isPresented: $isShowingMeshViewer) {
             NavigationStack {
@@ -221,6 +222,17 @@ struct ProjectDetailView: View {
 
     private var floorPlanURL: URL {
         project.url.appendingPathComponent("floorplan.png")
+    }
+
+    /// 옛 관례(거울상, format_version 1)로 저장된 floorplan.png를 지금 관례로 고쳐 쓴다.
+    /// "바닥 평면 보기"는 png를 그대로 보여줘서 `PersistedMeta.load`(읽는 김에 변환)를
+    /// 안 거치므로 화면에 들어올 때 미리 한 번 읽어둔다. 이미 v2면 json 읽기로 끝난다.
+    private func migrateFloorPlanIfNeeded() {
+        guard project.hasFloorPlan else { return }
+        let projectURL = project.url
+        DispatchQueue.global(qos: .utility).async {
+            _ = FloorPlanRenderer.PersistedMeta.load(from: projectURL)
+        }
     }
 
     /// 사진을 mesh에 직접 프로젝션해서 텍스처를 굽는다(`TextureBaker`, Metal 기반,

@@ -82,6 +82,26 @@ struct ScanAlignment: Codable, Equatable {
         return (x * c + z * s, -x * s + z * c)
     }
 
+    /// `applyXZ`의 역 -- 기준 좌표계의 점을 이 스캔의 로컬 좌표로.
+    func inverseXZ(x: Float, z: Float) -> (x: Float, z: Float) {
+        let dx = x - offsetX, dz = z - offsetZ
+        let c = cos(yawRadians), s = sin(yawRadians)
+        return (dx * c - dz * s, dx * s + dz * c)
+    }
+
+    /// yaw를 `delta`만큼 더하되 기준 좌표계의 `pivot` 지점이 제자리에 있도록 offset을
+    /// 보정한다. 정렬 화면이 이미지 중심을 축으로 돌릴 때 쓴다 -- 그냥 yaw만 바꾸면
+    /// 스캔 원점(스캔 시작 지점, 화면에 안 보임)을 축으로 돌아서 이미지가 멀리 날아간다.
+    func rotated(by delta: Float, aboutX pivotX: Float, z pivotZ: Float) -> ScanAlignment {
+        let local = inverseXZ(x: pivotX, z: pivotZ)
+        var result = self
+        result.yawRadians += delta
+        let moved = result.rotateXZ(x: local.x, z: local.z)
+        result.offsetX = pivotX - moved.x
+        result.offsetZ = pivotZ - moved.z
+        return result
+    }
+
     /// 같은 변환을 GroundPose(scan-to-map-studio 평면 관례, X = x, Y = -z) 위에서.
     /// `applyXZ`와 수학적으로 같은 변환이어야 한다(ScanAlignmentTests가 대조) --
     /// Y = -z로 바꾸면 yaw 회전은 (X, Y) 평면에서 반시계 +yaw 회전이 되고 heading도

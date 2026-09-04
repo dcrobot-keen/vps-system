@@ -23,7 +23,12 @@ enum FloorPlanRenderer {
         /// 이미지 col 0(왼쪽 끝)에 대응하는 world-space X.
         let originX: Float
         /// 이미지 row 0(위쪽 끝)에 대응하는 world-space Z. row가 커질수록(아래로
-        /// 갈수록) Z는 작아진다 -- `pixel(forWorldX:z:)` 참고.
+        /// 갈수록) Z도 커진다 -- `pixel(forWorldX:z:)` 참고. ARKit world는 +y가 위인
+        /// 오른손 좌표계라 위에서 내려다보면 +x가 오른쪽일 때 +z는 아래고, 카메라
+        /// 시작 방향(-z)이 이미지 위다. 반대로(row 0 = 최대 z) 그리면 거울상이 돼서
+        /// 실제로 왼쪽으로 돌 때 화면에선 오른쪽으로 도는 것처럼 보인다 --
+        /// format_version 1이 그 상태였고, `PersistedMeta.load`가 읽을 때 뒤집어
+        /// v2로 고쳐 쓴다.
         let originTopZ: Float
         let widthPx: Int
         let heightPx: Int
@@ -39,14 +44,48 @@ enum FloorPlanRenderer {
         func pixel(forWorldX x: Float, z: Float) -> CGPoint {
             CGPoint(
                 x: CGFloat((x - originX) / resolutionMetersPerPixel),
-                y: CGFloat((originTopZ - z) / resolutionMetersPerPixel)
+                y: CGFloat((z - originTopZ) / resolutionMetersPerPixel)
             )
         }
 
         /// floorplan.json에 그대로 저장할 수 있는 dictionary(JSONSerialization용).
         /// `image`는 별도로 floorplan.png에 저장하므로 여기 포함하지 않는다.
         var metadataDictionary: [String: Any] {
+            PersistedMeta(
+                resolutionMetersPerPixel: resolutionMetersPerPixel, originX: originX, originTopZ: originTopZ,
+                widthPx: widthPx, heightPx: heightPx,
+                floorHeightMin: floorHeightMin, floorHeightMax: floorHeightMax
+            ).metadataDictionary
+        }
+    }
+
+    /// floorplan.json의 `format_version`. 1(키 없음) = row 0이 최대 z인 거울상 관례,
+    /// 2 = row 0이 최소 z(실제로 위에서 내려다본 방향). `PersistedMeta.load`가 1을
+    /// 만나면 png/json을 2로 고쳐 쓴다.
+    static let formatVersion = 2
+
+    /// `Result.metadataDictionary`가 floorplan.json으로 저장해둔 값을 다시 읽는다.
+    /// `ProjectDetailView`(텍스처 베이킹 후 바닥 재색칠)와 `LocalizeSessionManager`
+    /// (위치확인 AR 오버레이), `FloorPlanLayer`(정렬/위치 확인 2D 지도),
+    /// `ScanGroupMerger`(바닥 높이)가 공유해서 쓴다.
+    ///
+    /// format_version이 없거나(v1) 낮은 옛 스캔은 읽는 김에 현재 관례(v2)로 **파일을
+    /// 고쳐 쓴다** -- floorplan.png를 세로로 뒤집고 origin_top_z를 다시 계산해
+    /// format_version과 함께 저장. 모든 소비자가 이 함수를 거치므로 그 뒤로는 어디서
+    /// 읽어도 같은 관례다("바닥 평면 보기"처럼 png만 보는 곳은 ProjectDetailView가
+    /// 화면에 들어올 때 미리 한 번 불러준다).
+    struct PersistedMeta {
+        let resolutionMetersPerPixel: Float
+        let originX: Float
+        let originTopZ: Float
+        let widthPx: Int
+        let heightPx: Int
+        let floorHeightMin: Float?
+        let floorHeightMax: Float?
+
+        var metadataDictionary: [String: Any] {
             var dict: [String: Any] = [
+                "format_version": FloorPlanRenderer.formatVersion,
                 "resolution_meters_per_pixel": resolutionMetersPerPixel,
                 "origin_x": originX,
                 "origin_top_z": originTopZ,
@@ -57,21 +96,21 @@ enum FloorPlanRenderer {
             if let floorHeightMax { dict["floor_height_max"] = floorHeightMax }
             return dict
         }
-    }
 
-    /// `Result.metadataDictionary`가 floorplan.json으로 저장해둔 값을 다시 읽는다.
-    /// `ProjectDetailView`(텍스처 베이킹 후 바닥 재색칠)와 `LocalizeSessionManager`
-    /// (위치확인 AR 오버레이)가 공유해서 쓴다.
-    struct PersistedMeta {
-        let resolutionMetersPerPixel: Float
-        let originX: Float
-        let originTopZ: Float
-        let widthPx: Int
-        let heightPx: Int
-        let floorHeightMin: Float?
-        let floorHeightMax: Float?
+        /// 옛 스캔을 두 곳에서 동시에 읽으면(예: 합치기와 위치 확인) 둘 다 v1로 보고
+        /// png를 두 번 뒤집을 수 있어 -- 그러면 json은 v2인데 png는 원래 거울상 --
+        /// 읽기+변환을 프로세스 전체에서 직렬화한다.
+        private static let migrationLock = NSLock()
 
         static func load(from projectURL: URL) -> PersistedMeta? {
+            migrationLock.lock()
+            defer { migrationLock.unlock() }
+            guard let (version, meta) = read(from: projectURL) else { return nil }
+            guard version < FloorPlanRenderer.formatVersion else { return meta }
+            return migrateLegacy(meta, in: projectURL)
+        }
+
+        private static func read(from projectURL: URL) -> (version: Int, meta: PersistedMeta)? {
             guard let data = try? Data(contentsOf: projectURL.appendingPathComponent("floorplan.json")),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let resolution = json["resolution_meters_per_pixel"] as? Double,
@@ -80,7 +119,7 @@ enum FloorPlanRenderer {
                   let widthPx = json["width_px"] as? Int,
                   let heightPx = json["height_px"] as? Int
             else { return nil }
-            return PersistedMeta(
+            let meta = PersistedMeta(
                 resolutionMetersPerPixel: Float(resolution),
                 originX: Float(originX),
                 originTopZ: Float(originTopZ),
@@ -89,6 +128,55 @@ enum FloorPlanRenderer {
                 floorHeightMin: (json["floor_height_min"] as? Double).map(Float.init),
                 floorHeightMax: (json["floor_height_max"] as? Double).map(Float.init)
             )
+            return (json["format_version"] as? Int ?? 1, meta)
+        }
+
+        /// v1(row 0 = 최대 z, 아래로 갈수록 z 감소) -> v2: png를 세로로 뒤집고 row 0의
+        /// z를 옛 아래쪽 끝(originTopZ - heightPx*res)으로 잡는다. 픽셀 격자는 그대로라
+        /// 텍스처 베이킹 후 바닥 재색칠 같은 픽셀 단위 작업도 어긋나지 않는다. 실패하면
+        /// nil -- 거울상 지도를 보여주느니 없는 셈 친다. png를 먼저 쓰고 json을 그 뒤에
+        /// 쓰므로 json 쓰기가 실패해도 다음 읽기에서 다시 v1로 판단해 한 번 더 뒤집는다
+        /// (원상복구) -- v2 json 아래 거울상 png가 남는 조합은 생기지 않는다.
+        private static func migrateLegacy(_ legacy: PersistedMeta, in projectURL: URL) -> PersistedMeta? {
+            // png가 없는(json만 남은) 스캔은 뒤집을 게 없으니 json만 고쳐 쓴다 --
+            // 합치기의 바닥 높이 맞추기(floor_height_min)는 그래도 써야 한다.
+            let pngURL = projectURL.appendingPathComponent("floorplan.png")
+            if FileManager.default.fileExists(atPath: pngURL.path) {
+                guard let image = UIImage(contentsOfFile: pngURL.path),
+                      let pngData = FloorPlanRenderer.verticallyFlipped(image).pngData()
+                else { return nil }
+                do { try pngData.write(to: pngURL) } catch { return nil }
+            }
+            let migrated = PersistedMeta(
+                resolutionMetersPerPixel: legacy.resolutionMetersPerPixel,
+                originX: legacy.originX,
+                originTopZ: legacy.originTopZ - Float(legacy.heightPx) * legacy.resolutionMetersPerPixel,
+                widthPx: legacy.widthPx,
+                heightPx: legacy.heightPx,
+                floorHeightMin: legacy.floorHeightMin,
+                floorHeightMax: legacy.floorHeightMax
+            )
+            do {
+                let metaData = try JSONSerialization.data(withJSONObject: migrated.metadataDictionary, options: [.prettyPrinted])
+                try metaData.write(to: projectURL.appendingPathComponent("floorplan.json"))
+            } catch {
+                return nil
+            }
+            return migrated
+        }
+    }
+
+    /// 픽셀 크기를 유지한 채 위아래를 뒤집는다(옛 floorplan.png 변환용).
+    static func verticallyFlipped(_ image: UIImage) -> UIImage {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let pixelSize = CGSize(width: image.size.width * image.scale, height: image.size.height * image.scale)
+        return UIGraphicsImageRenderer(size: pixelSize, format: format).image { rendererContext in
+            let cg = rendererContext.cgContext
+            cg.translateBy(x: 0, y: pixelSize.height)
+            cg.scaleBy(x: 1, y: -1)
+            image.draw(in: CGRect(origin: .zero, size: pixelSize))
         }
     }
 
@@ -269,13 +357,14 @@ enum FloorPlanRenderer {
             heightPx = max(Int(((maxZ - minZ) / effectiveResolution).rounded(.up)), 1)
         }
 
-        // 이미지 좌표계: col = (x - minX)/res, row = (maxZ - z)/res (이미지 위쪽 =
-        // -Z 방향). 나침반 기준 방향은 아니지만 렌더링 내내 이 한 매핑만 쓰므로
-        // 바닥/벽/경로가 항상 같은 자리에 겹친다.
+        // 이미지 좌표계: col = (x - minX)/res, row = (z - minZ)/res (이미지 위쪽 =
+        // -Z 방향 = 위에서 내려다봤을 때의 실제 방향, `Result.originTopZ` 참고).
+        // 나침반 기준 방향은 아니지만 렌더링 내내 이 한 매핑만 쓰므로 바닥/벽/경로가
+        // 항상 같은 자리에 겹친다.
         func pixel(_ world: SIMD2<Float>) -> CGPoint {
             CGPoint(
                 x: CGFloat((world.x - minX) / effectiveResolution),
-                y: CGFloat((maxZ - world.y) / effectiveResolution)
+                y: CGFloat((world.y - minZ) / effectiveResolution)
             )
         }
 
@@ -330,7 +419,7 @@ enum FloorPlanRenderer {
             image: image,
             resolutionMetersPerPixel: effectiveResolution,
             originX: minX,
-            originTopZ: maxZ,
+            originTopZ: minZ,
             widthPx: widthPx,
             heightPx: heightPx,
             floorHeightMin: floorHeightMin,
@@ -419,7 +508,7 @@ enum FloorPlanRenderer {
         func pixel(_ world: SIMD2<Float>) -> CGPoint {
             CGPoint(
                 x: CGFloat((world.x - originX) / resolutionMetersPerPixel),
-                y: CGFloat((originTopZ - world.y) / resolutionMetersPerPixel)
+                y: CGFloat((world.y - originTopZ) / resolutionMetersPerPixel)
             )
         }
 

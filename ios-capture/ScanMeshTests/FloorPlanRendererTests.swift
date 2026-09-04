@@ -50,13 +50,14 @@ final class FloorPlanRendererTests: XCTestCase {
         XCTAssertEqual(result.heightPx, 60)
 
         // (0.3, 0.3)는 삼각형 내부 깊숙히(가장자리에서 6px 이상 떨어짐) -> 흰색.
-        let inside = pixelColor(in: result.image, x: 16, y: 44)
+        // row = (z - minZ)/res = (0.3 + 0.5)/0.05 = 16 (이미지 위쪽 = 작은 z).
+        let inside = pixelColor(in: result.image, x: 16, y: 16)
         XCTAssertGreaterThan(inside.r, 240)
         XCTAssertGreaterThan(inside.g, 240)
         XCTAssertGreaterThan(inside.b, 240)
 
         // (-0.4, 2.4)는 padding 영역(삼각형 밖) -> 미확인(회색 205).
-        let background = pixelColor(in: result.image, x: 2, y: 2)
+        let background = pixelColor(in: result.image, x: 2, y: 58)
         XCTAssertTrue((195...215).contains(Int(background.r)))
         XCTAssertEqual(background.r, background.g)
         XCTAssertEqual(background.g, background.b)
@@ -69,8 +70,8 @@ final class FloorPlanRendererTests: XCTestCase {
         let result = try XCTUnwrap(
             FloorPlanRenderer.rasterize(floorTriangles: [], wallTriangles: [wall], scanPathXZ: [])
         )
-        // (3.05, 3.05)는 이 작은 삼각형 내부.
-        let inside = pixelColor(in: result.image, x: 11, y: 13)
+        // (3.05, 3.05)는 이 작은 삼각형 내부 (bbox [2.5, 3.7]^2 -> col/row 11).
+        let inside = pixelColor(in: result.image, x: 11, y: 11)
         XCTAssertLessThan(inside.r, 60)
         XCTAssertLessThan(inside.g, 60)
         XCTAssertLessThan(inside.b, 60)
@@ -159,18 +160,85 @@ final class FloorPlanRendererTests: XCTestCase {
         )
 
         // (0.3, 0.3)는 패치 안 -> 빨강.
-        let insidePatch = pixelColor(in: recolored, x: 16, y: 44)
+        let insidePatch = pixelColor(in: recolored, x: 16, y: 16)
         XCTAssertGreaterThan(Int(insidePatch.r), Int(insidePatch.g) + 100)
 
         // (1.5, 0.3)은 원래 바닥(흰색)이지만 패치 밖 -> 그대로 흰색.
-        let outsidePatch = pixelColor(in: recolored, x: 40, y: 44)
+        let outsidePatch = pixelColor(in: recolored, x: 40, y: 16)
         XCTAssertGreaterThan(outsidePatch.r, 240)
         XCTAssertGreaterThan(outsidePatch.g, 240)
         XCTAssertGreaterThan(outsidePatch.b, 240)
 
         // (-0.4, 2.4)는 배경(회색) -> 그대로 회색.
-        let background = pixelColor(in: recolored, x: 2, y: 2)
+        let background = pixelColor(in: recolored, x: 2, y: 58)
         XCTAssertTrue((195...215).contains(Int(background.r)))
+    }
+
+    /// 위에서 내려다본 방향: +x는 오른쪽(col 증가), +z는 아래(row 증가). 반대로 하면
+    /// 거울상이라 실제로 왼쪽으로 돌 때 화면에선 오른쪽으로 도는 것처럼 보인다.
+    func testPixelMappingIsTrueTopDownView() throws {
+        let floor = FloorPlanRenderer.Triangle(a: SIMD2(0, 0), b: SIMD2(2, 0), c: SIMD2(0, 2))
+        let result = try XCTUnwrap(
+            FloorPlanRenderer.rasterize(floorTriangles: [floor], wallTriangles: [], scanPathXZ: [])
+        )
+        let origin = result.pixel(forWorldX: 0, z: 0)
+        XCTAssertGreaterThan(result.pixel(forWorldX: 1, z: 0).x, origin.x)
+        XCTAssertGreaterThan(result.pixel(forWorldX: 0, z: 1).y, origin.y)
+        XCTAssertEqual(result.originTopZ, -0.5, accuracy: 1e-5, "row 0 = 최소 z(-0.5 padding)")
+        XCTAssertEqual(result.metadataDictionary["format_version"] as? Int, FloorPlanRenderer.formatVersion)
+    }
+
+    /// format_version 없는 옛 floorplan.json/png(row 0 = 최대 z)는 읽을 때 png를 세로로
+    /// 뒤집고 origin_top_z를 아래쪽 끝으로 옮겨 v2로 고쳐 써야 한다. 다시 읽으면(이미
+    /// v2) 더 건드리지 않는다.
+    func testLoadMigratesLegacyFloorPlanByFlippingVertically() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("floorplan-legacy-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // 1x2px: 위 흰색, 아래 검정.
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let legacyImage = UIGraphicsImageRenderer(size: CGSize(width: 1, height: 2), format: format).image { ctx in
+            UIColor.white.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
+            UIColor.black.setFill()
+            ctx.fill(CGRect(x: 0, y: 1, width: 1, height: 1))
+        }
+        try XCTUnwrap(legacyImage.pngData()).write(to: dir.appendingPathComponent("floorplan.png"))
+        let legacyJSON: [String: Any] = [
+            "resolution_meters_per_pixel": 0.5,
+            "origin_x": 1.0,
+            "origin_top_z": 3.0,
+            "width_px": 1,
+            "height_px": 2,
+            "floor_height_min": -0.1,
+        ]
+        try JSONSerialization.data(withJSONObject: legacyJSON).write(to: dir.appendingPathComponent("floorplan.json"))
+
+        let meta = try XCTUnwrap(FloorPlanRenderer.PersistedMeta.load(from: dir))
+        XCTAssertEqual(meta.originTopZ, 2.0, accuracy: 1e-5, "3.0 - 2px * 0.5m")
+        XCTAssertEqual(meta.originX, 1.0, accuracy: 1e-5)
+        XCTAssertEqual(meta.heightPx, 2)
+        XCTAssertEqual(try XCTUnwrap(meta.floorHeightMin), -0.1, accuracy: 1e-5)
+
+        let migratedImage = try XCTUnwrap(UIImage(contentsOfFile: dir.appendingPathComponent("floorplan.png").path))
+        XCTAssertEqual(migratedImage.size, CGSize(width: 1, height: 2))
+        XCTAssertLessThan(pixelColor(in: migratedImage, x: 0, y: 0).r, 30, "뒤집혀서 위가 검정")
+        XCTAssertGreaterThan(pixelColor(in: migratedImage, x: 0, y: 1).r, 225, "아래가 흰색")
+
+        let jsonData = try Data(contentsOf: dir.appendingPathComponent("floorplan.json"))
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: jsonData) as? [String: Any])
+        XCTAssertEqual(json["format_version"] as? Int, FloorPlanRenderer.formatVersion)
+        XCTAssertEqual(try XCTUnwrap(json["origin_top_z"] as? Double), 2.0, accuracy: 1e-5)
+
+        // 두 번째 읽기는 이미 v2 -- png가 또 뒤집히면 안 된다.
+        let again = try XCTUnwrap(FloorPlanRenderer.PersistedMeta.load(from: dir))
+        XCTAssertEqual(again.originTopZ, 2.0, accuracy: 1e-5)
+        let unchanged = try XCTUnwrap(UIImage(contentsOfFile: dir.appendingPathComponent("floorplan.png").path))
+        XCTAssertLessThan(pixelColor(in: unchanged, x: 0, y: 0).r, 30)
     }
 
     func testEmptyInputReturnsNil() {

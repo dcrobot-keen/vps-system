@@ -70,7 +70,7 @@ struct LocalizeView: View {
         .onDisappear { manager.stop() }
     }
 
-    // MARK: - 상단: top-down 2D 위치 표시 (world x/z, 화면 위 = +z -- FloorPlanLayer 참고)
+    // MARK: - 상단: top-down 2D 위치 표시 (world x/z, 화면 위 = -z -- FloorPlanLayer 참고)
 
     private var topDownView: some View {
         Canvas { context, size in

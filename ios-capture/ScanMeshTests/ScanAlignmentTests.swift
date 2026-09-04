@@ -53,4 +53,27 @@ final class ScanAlignmentTests: XCTestCase {
         XCTAssertEqual(x, 5, accuracy: 1e-5)
         XCTAssertEqual(z, 4, accuracy: 1e-5)
     }
+
+    func testInverseXZUndoesApplyXZ() {
+        let a = ScanAlignment(offsetX: 1.5, offsetZ: -2, yawRadians: 0.7)
+        let p = a.applyXZ(x: 3, z: -4)
+        let back = a.inverseXZ(x: p.x, z: p.z)
+        XCTAssertEqual(back.x, 3, accuracy: 1e-5)
+        XCTAssertEqual(back.z, -4, accuracy: 1e-5)
+    }
+
+    func testRotatedAboutPivotKeepsPivotFixed() {
+        let a = ScanAlignment(offsetX: 1.5, offsetZ: -2, yawRadians: 0.3)
+        let pivot: (x: Float, z: Float) = (4, 1)
+        let local = a.inverseXZ(x: pivot.x, z: pivot.z)
+        let rotated = a.rotated(by: 0.5, aboutX: pivot.x, z: pivot.z)
+        XCTAssertEqual(rotated.yawRadians, 0.8, accuracy: 1e-6)
+        let moved = rotated.applyXZ(x: local.x, z: local.z)
+        XCTAssertEqual(moved.x, pivot.x, accuracy: 1e-4, "pivot에 있던 로컬 점은 회전 후에도 pivot에")
+        XCTAssertEqual(moved.z, pivot.z, accuracy: 1e-4)
+        // 다른 점은 pivot 기준으로 돌아간다 -- pivot에서의 거리는 그대로.
+        let q = a.applyXZ(x: 0, z: 0)
+        let q2 = rotated.applyXZ(x: 0, z: 0)
+        XCTAssertEqual(hypot(q.x - pivot.x, q.z - pivot.z), hypot(q2.x - pivot.x, q2.z - pivot.z), accuracy: 1e-4)
+    }
 }
