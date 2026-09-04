@@ -1,6 +1,49 @@
 {
   "sourceLanguage" : "ko",
   "strings" : {
+    "%@ · %@" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · %2$@"
+          }
+        }
+      }
+    },
+    "%@: x=%@m, y=%@m, heading=%@°" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@: x=%2$@m, y=%3$@m, heading=%4$@°"
+          }
+        }
+      }
+    },
+    "%lld / %lld" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld / %2$lld"
+          }
+        }
+      }
+    },
+    "%lld / %lld 프레임" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld / %2$lld 프레임"
+          }
+        }
+      }
+    },
+    "%lld 프레임" : {
+
+    },
     "3D mesh 보기" : {
       "localizations" : {
         "en" : {
@@ -17,6 +60,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "3D space scanning requires a LiDAR sensor. Available on iPhone 12 Pro and later Pro/Pro Max models, and iPad Pro models from 2020 onward."
+          }
+        }
+      }
+    },
+    "http://100.x.x.x:8000" : {
+
+    },
+    "mesh" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "mesh"
+          }
+        }
+      }
+    },
+    "scan.usdz 없음" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No scan.usdz"
+          }
+        }
+      }
+    },
+    "scan.usdz 있음" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "scan.usdz available"
           }
         }
       }
@@ -101,6 +177,9 @@
         }
       }
     },
+    "등록 완료 (room: %@)" : {
+
+    },
     "로봇 시스템(VPS 서버)과 연동하는 기능을 켭니다. 일반적인 스캔·내보내기에는 필요 없습니다." : {
       "localizations" : {
         "en" : {
@@ -131,12 +210,12 @@
         }
       }
     },
-    "mesh" : {
+    "삭제" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "mesh"
+            "value" : "Delete"
           }
         }
       }
@@ -151,26 +230,6 @@
         }
       }
     },
-    "scan.usdz 없음" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No scan.usdz"
-          }
-        }
-      }
-    },
-    "scan.usdz 있음" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "scan.usdz available"
-          }
-        }
-      }
-    },
     "설정" : {
       "localizations" : {
         "en" : {
@@ -181,22 +240,22 @@
         }
       }
     },
-    "스캔메시" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ScanMesh"
-          }
-        }
-      }
-    },
     "스캔 시작" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Start Scan"
+          }
+        }
+      }
+    },
+    "스캔메시" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ScanMesh"
           }
         }
       }
@@ -221,22 +280,12 @@
         }
       }
     },
-    "삭제" : {
+    "오른쪽 위 + 버튼으로 새 프로젝트를 시작하세요" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Delete"
-          }
-        }
-      }
-    },
-    "완료" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Done"
+            "value" : "Tap the + button in the top right to start a new project"
           }
         }
       }
@@ -251,12 +300,12 @@
         }
       }
     },
-    "오른쪽 위 + 버튼으로 새 프로젝트를 시작하세요" : {
+    "완료" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tap the + button in the top right to start a new project"
+            "value" : "Done"
           }
         }
       }
@@ -311,12 +360,28 @@
         }
       }
     },
+    "천천히, 흔들지 않게 움직여주세요. 흰 벽보다는 가구·표지판처럼 특징이 뚜렷한 곳 위주로, 같은 곳도 2~3개 각도에서 훑어주면 좋아요." : {
+
+    },
     "취소" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Cancel"
+          }
+        }
+      }
+    },
+    "캡처된 사진 (%lld장)" : {
+
+    },
+    "텍스처 결과 보기" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "View Textured Result"
           }
         }
       }
@@ -331,16 +396,6 @@
         }
       }
     },
-    "텍스처 결과 보기" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "View Textured Result"
-          }
-        }
-      }
-    },
     "텍스처 생성" : {
       "localizations" : {
         "en" : {
@@ -350,6 +405,9 @@
           }
         }
       }
+    },
+    "프레임: %lld" : {
+
     },
     "프로젝트" : {
       "localizations" : {
