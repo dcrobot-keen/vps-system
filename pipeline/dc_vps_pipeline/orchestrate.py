@@ -54,6 +54,7 @@ def orchestrate(
     scan_to_map_studio_python: Path | None = None,
     robot_map_prefix: Path | None = None,
     project_name: str | None = None,
+    classify: bool = True,
 ) -> None:
     # subprocess.run(cwd=scan_to_map_studio_dir) 아래에서 상대경로가 두 번 적용되지
     # 않도록 여기서 전부 절대경로로 고정한다 (예: ../../scan-to-map-studio 를 넘기면
@@ -103,6 +104,10 @@ def orchestrate(
         process_cmd += ["--ply", str(pointcloud_path.resolve())]
     if robot_map_prefix is not None:
         process_cmd += ["--robot-map", str(robot_map_prefix.resolve())]
+    if classify:
+        # 벽/가구 분류가 있어야 output.geojson에 wall/furniture 피처가 들어가고,
+        # pathfinder의 import-scan-to-map-studio.mjs 가 방 외곽선만 받는 일이 없다.
+        process_cmd += ["--classify"]
     subprocess.run(process_cmd, cwd=scan_to_map_studio_dir, check=True)
 
     project_dir = scan_to_map_studio_dir / "projects" / project_name
@@ -124,6 +129,11 @@ def main() -> None:
     parser.add_argument("--scan-to-map-studio-python", type=Path, default=None)
     parser.add_argument("--robot-map", type=Path, default=None, dest="robot_map_prefix")
     parser.add_argument("--project-name", type=str, default=None)
+    parser.add_argument(
+        "--no-classify",
+        action="store_true",
+        help="studio.py process 를 --classify 없이 실행 (기본은 켬: output.geojson 에 벽/가구가 필요함)",
+    )
     args = parser.parse_args()
 
     try:
@@ -134,6 +144,7 @@ def main() -> None:
             scan_to_map_studio_python=args.scan_to_map_studio_python,
             robot_map_prefix=args.robot_map_prefix,
             project_name=args.project_name,
+            classify=not args.no_classify,
         )
     except subprocess.CalledProcessError as error:
         print(f"scan-to-map-studio 실행 실패 (exit {error.returncode})", file=sys.stderr)

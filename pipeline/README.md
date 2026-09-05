@@ -58,8 +58,12 @@ nav2 pgm/yaml 지도가 나오는 것까지 확인함 (2026-08-17).
 ```
 python -m dc_vps_pipeline.orchestrate <scan_dir> <output_dir> \
     --scan-to-map-studio-dir <scan-to-map-studio 체크아웃 경로> \
-    [--robot-map <robot_map_prefix>] [--project-name <name>]
+    [--robot-map <robot_map_prefix>] [--project-name <name>] [--no-classify]
 ```
+
+studio의 `process`는 기본으로 `--classify`를 켜서 실행한다 — 그래야 `output.geojson`에
+벽/가구 피처가 들어가고 pathfinder의 `import-scan-to-map-studio.mjs`가 방 외곽선만 받는
+일이 없다. 분류를 끄려면 `--no-classify`.
 
 `db_build.py`(hloc DB)를 실행한 뒤, `scan_dir`에 `scan.usdz`(ios-capture의 ARKit mesh
 export, `ios-capture/README.md` "scan.usdz 동시 캡처" 참고)가 있으면 그걸 우선 쓰고,
