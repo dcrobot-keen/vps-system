@@ -1,0 +1,1087 @@
+{
+ "format": "scan-alignment-vectors-v1",
+ "description": "ScanAlignment(offsetX, offsetZ, yawRadians): ARKit plane apply x' = x cos + z sin + offsetX, z' = -x sin + z cos + offsetZ. Slice plane (x, y) = (x, -z): [x', y'] = R(yaw) [x, y] + [offsetX, -offsetZ]. Consumers: vps-system/ios-capture ScanAlignmentTests, scan-to-map-studio tests/test_merge_slicemaps.py, pathfinder scripts/scan-alignment-smoke.mjs. Tolerance 1e-5.",
+ "tolerance": 1e-05,
+ "cases": [
+  {
+   "alignment": {
+    "offsetX": 0.0,
+    "offsetZ": 0.0,
+    "yawRadians": 0.0
+   },
+   "arkit_xz": [
+    0.7,
+    -0.2
+   ],
+   "expected_arkit_xz": [
+    0.7,
+    -0.2
+   ],
+   "slice_xy": [
+    0.7,
+    0.2
+   ],
+   "expected_slice_xy": [
+    0.7,
+    0.2
+   ],
+   "inverse_check": [
+    0.7,
+    -0.2
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": 0.0,
+    "offsetZ": 0.0,
+    "yawRadians": 0.0
+   },
+   "arkit_xz": [
+    1.0,
+    0.0
+   ],
+   "expected_arkit_xz": [
+    1.0,
+    0.0
+   ],
+   "slice_xy": [
+    1.0,
+    -0.0
+   ],
+   "expected_slice_xy": [
+    1.0,
+    0.0
+   ],
+   "inverse_check": [
+    1.0,
+    0.0
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": 0.0,
+    "offsetZ": 0.0,
+    "yawRadians": 0.0
+   },
+   "arkit_xz": [
+    0.0,
+    1.0
+   ],
+   "expected_arkit_xz": [
+    0.0,
+    1.0
+   ],
+   "slice_xy": [
+    0.0,
+    -1.0
+   ],
+   "expected_slice_xy": [
+    0.0,
+    -1.0
+   ],
+   "inverse_check": [
+    0.0,
+    1.0
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": 0.0,
+    "offsetZ": 0.0,
+    "yawRadians": 0.0
+   },
+   "arkit_xz": [
+    -3.25,
+    2.5
+   ],
+   "expected_arkit_xz": [
+    -3.25,
+    2.5
+   ],
+   "slice_xy": [
+    -3.25,
+    -2.5
+   ],
+   "expected_slice_xy": [
+    -3.25,
+    -2.5
+   ],
+   "inverse_check": [
+    -3.25,
+    2.5
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": 0.0,
+    "offsetZ": 0.0,
+    "yawRadians": 0.0
+   },
+   "arkit_xz": [
+    5.5,
+    -4.75
+   ],
+   "expected_arkit_xz": [
+    5.5,
+    -4.75
+   ],
+   "slice_xy": [
+    5.5,
+    4.75
+   ],
+   "expected_slice_xy": [
+    5.5,
+    4.75
+   ],
+   "inverse_check": [
+    5.5,
+    -4.75
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": 1.5,
+    "offsetZ": -0.5,
+    "yawRadians": 1.5707963267948966
+   },
+   "arkit_xz": [
+    0.7,
+    -0.2
+   ],
+   "expected_arkit_xz": [
+    1.3,
+    -1.2
+   ],
+   "slice_xy": [
+    0.7,
+    0.2
+   ],
+   "expected_slice_xy": [
+    1.3,
+    1.2
+   ],
+   "inverse_check": [
+    0.7,
+    -0.2
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": 1.5,
+    "offsetZ": -0.5,
+    "yawRadians": 1.5707963267948966
+   },
+   "arkit_xz": [
+    1.0,
+    0.0
+   ],
+   "expected_arkit_xz": [
+    1.5,
+    -1.5
+   ],
+   "slice_xy": [
+    1.0,
+    -0.0
+   ],
+   "expected_slice_xy": [
+    1.5,
+    1.5
+   ],
+   "inverse_check": [
+    1.0,
+    -6.123233995736766e-17
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": 1.5,
+    "offsetZ": -0.5,
+    "yawRadians": 1.5707963267948966
+   },
+   "arkit_xz": [
+    0.0,
+    1.0
+   ],
+   "expected_arkit_xz": [
+    2.5,
+    -0.49999999999999994
+   ],
+   "slice_xy": [
+    0.0,
+    -1.0
+   ],
+   "expected_slice_xy": [
+    2.5,
+    0.49999999999999994
+   ],
+   "inverse_check": [
+    5.721188726109833e-18,
+    1.0
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": 1.5,
+    "offsetZ": -0.5,
+    "yawRadians": 1.5707963267948966
+   },
+   "arkit_xz": [
+    -3.25,
+    2.5
+   ],
+   "expected_arkit_xz": [
+    4.0,
+    2.75
+   ],
+   "slice_xy": [
+    -3.25,
+    -2.5
+   ],
+   "expected_slice_xy": [
+    4.0,
+    -2.75
+   ],
+   "inverse_check": [
+    -3.25,
+    2.5
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": 1.5,
+    "offsetZ": -0.5,
+    "yawRadians": 1.5707963267948966
+   },
+   "arkit_xz": [
+    5.5,
+    -4.75
+   ],
+   "expected_arkit_xz": [
+    -3.25,
+    -6.0
+   ],
+   "slice_xy": [
+    5.5,
+    4.75
+   ],
+   "expected_slice_xy": [
+    -3.25,
+    6.0
+   ],
+   "inverse_check": [
+    5.5,
+    -4.75
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": 0.11286545,
+    "offsetZ": -0.35293126,
+    "yawRadians": 0.7637064
+   },
+   "arkit_xz": [
+    0.7,
+    -0.2
+   ],
+   "expected_arkit_xz": [
+    0.48013913579502165,
+    -0.9815090513055309
+   ],
+   "slice_xy": [
+    0.7,
+    0.2
+   ],
+   "expected_slice_xy": [
+    0.48013913579502165,
+    0.9815090513055309
+   ],
+   "inverse_check": [
+    0.6999999999999997,
+    -0.19999999999999996
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": 0.11286545,
+    "offsetZ": -0.35293126,
+    "yawRadians": 0.7637064
+   },
+   "arkit_xz": [
+    1.0,
+    0.0
+   ],
+   "expected_arkit_xz": [
+    0.8351430694672102,
+    -1.044534499160127
+   ],
+   "slice_xy": [
+    1.0,
+    -0.0
+   ],
+   "expected_slice_xy": [
+    0.8351430694672102,
+    1.044534499160127
+   ],
+   "inverse_check": [
+    0.9999999999999998,
+    0.0
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": 0.11286545,
+    "offsetZ": -0.35293126,
+    "yawRadians": 0.7637064
+   },
+   "arkit_xz": [
+    0.0,
+    1.0
+   ],
+   "expected_arkit_xz": [
+    0.804468689160127,
+    0.3693463594672101
+   ],
+   "slice_xy": [
+    0.0,
+    -1.0
+   ],
+   "expected_slice_xy": [
+    0.804468689160127,
+    -0.3693463594672101
+   ],
+   "inverse_check": [
+    0.0,
+    0.9999999999999998
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": 0.11286545,
+    "offsetZ": -0.35293126,
+    "yawRadians": 0.7637064
+   },
+   "arkit_xz": [
+    -3.25,
+    2.5
+   ],
+   "expected_arkit_xz": [
+    -0.5055287153681155,
+    3.7004733159384378
+   ],
+   "slice_xy": [
+    -3.25,
+    -2.5
+   ],
+   "expected_slice_xy": [
+    -0.5055287153681154,
+    -3.7004733159384378
+   ],
+   "inverse_check": [
+    -3.249999999999999,
+    2.4999999999999996
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": 0.11286545,
+    "offsetZ": -0.35293126,
+    "yawRadians": 0.7637064
+   },
+   "arkit_xz": [
+    5.5,
+    -4.75
+   ],
+   "expected_arkit_xz": [
+    0.8002769710590524,
+    -7.587567767849947
+   ],
+   "slice_xy": [
+    5.5,
+    4.75
+   ],
+   "expected_slice_xy": [
+    0.8002769710590526,
+    7.587567767849947
+   ],
+   "inverse_check": [
+    5.5,
+    -4.75
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": -2.0,
+    "offsetZ": 1.5,
+    "yawRadians": -1.1
+   },
+   "arkit_xz": [
+    0.7,
+    -0.2
+   ],
+   "expected_arkit_xz": [
+    -1.5042412429898087,
+    2.0331259277578893
+   ],
+   "slice_xy": [
+    0.7,
+    0.2
+   ],
+   "expected_slice_xy": [
+    -1.5042412429898089,
+    -2.0331259277578893
+   ],
+   "inverse_check": [
+    0.7000000000000001,
+    -0.20000000000000015
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": -2.0,
+    "offsetZ": 1.5,
+    "yawRadians": -1.1
+   },
+   "arkit_xz": [
+    1.0,
+    0.0
+   ],
+   "expected_arkit_xz": [
+    -1.5464038785744227,
+    2.3912073600614354
+   ],
+   "slice_xy": [
+    1.0,
+    -0.0
+   ],
+   "expected_slice_xy": [
+    -1.5464038785744227,
+    -2.3912073600614354
+   ],
+   "inverse_check": [
+    1.0,
+    5.551115123125783e-17
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": -2.0,
+    "offsetZ": 1.5,
+    "yawRadians": -1.1
+   },
+   "arkit_xz": [
+    0.0,
+    1.0
+   ],
+   "expected_arkit_xz": [
+    -2.8912073600614354,
+    1.9535961214255773
+   ],
+   "slice_xy": [
+    0.0,
+    -1.0
+   ],
+   "expected_slice_xy": [
+    -2.8912073600614354,
+    -1.9535961214255773
+   ],
+   "inverse_check": [
+    -5.551115123125783e-17,
+    1.0
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": -2.0,
+    "offsetZ": 1.5,
+    "yawRadians": -1.1
+   },
+   "arkit_xz": [
+    -3.25,
+    2.5
+   ],
+   "expected_arkit_xz": [
+    -5.702205794786715,
+    -0.26243361663572196
+   ],
+   "slice_xy": [
+    -3.25,
+    -2.5
+   ],
+   "expected_slice_xy": [
+    -5.702205794786715,
+    0.26243361663572173
+   ],
+   "inverse_check": [
+    -3.2500000000000004,
+    2.5
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": -2.0,
+    "offsetZ": 1.5,
+    "yawRadians": -1.1
+   },
+   "arkit_xz": [
+    5.5,
+    -4.75
+   ],
+   "expected_arkit_xz": [
+    4.728013628132493,
+    4.247058903566402
+   ],
+   "slice_xy": [
+    5.5,
+    4.75
+   ],
+   "expected_slice_xy": [
+    4.728013628132493,
+    -4.247058903566403
+   ],
+   "inverse_check": [
+    5.5,
+    -4.75
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": 3.412,
+    "offsetZ": -1.087,
+    "yawRadians": -0.1047
+   },
+   "arkit_xz": [
+    0.7,
+    -0.2
+   ],
+   "expected_arkit_xz": [
+    4.129068535372198,
+    -1.2127486205855544
+   ],
+   "slice_xy": [
+    0.7,
+    0.2
+   ],
+   "expected_slice_xy": [
+    4.129068535372198,
+    1.2127486205855544
+   ],
+   "inverse_check": [
+    0.6999999999999996,
+    -0.19999999999999996
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": 3.412,
+    "offsetZ": -1.087,
+    "yawRadians": -0.1047
+   },
+   "arkit_xz": [
+    1.0,
+    0.0
+   ],
+   "expected_arkit_xz": [
+    4.40652396014651,
+    -0.9824911836517893
+   ],
+   "slice_xy": [
+    1.0,
+    -0.0
+   ],
+   "expected_slice_xy": [
+    4.40652396014651,
+    0.9824911836517893
+   ],
+   "inverse_check": [
+    1.0000000000000004,
+    -2.7755575615628914e-17
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": 3.412,
+    "offsetZ": -1.087,
+    "yawRadians": -0.1047
+   },
+   "arkit_xz": [
+    0.0,
+    1.0
+   ],
+   "expected_arkit_xz": [
+    3.3074911836517895,
+    -0.09247603985349051
+   ],
+   "slice_xy": [
+    0.0,
+    -1.0
+   ],
+   "expected_slice_xy": [
+    3.3074911836517895,
+    0.09247603985349051
+   ],
+   "inverse_check": [
+    1.942890293094024e-16,
+    0.9999999999999999
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": 3.412,
+    "offsetZ": -1.087,
+    "yawRadians": -0.1047
+   },
+   "arkit_xz": [
+    -3.25,
+    2.5
+   ],
+   "expected_arkit_xz": [
+    -0.08147491134668217,
+    1.059656247234589
+   ],
+   "slice_xy": [
+    -3.25,
+    -2.5
+   ],
+   "expected_slice_xy": [
+    -0.08147491134668217,
+    -1.059656247234589
+   ],
+   "inverse_check": [
+    -3.25,
+    2.4999999999999996
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": 3.412,
+    "offsetZ": -1.087,
+    "yawRadians": -0.1047
+   },
+   "arkit_xz": [
+    5.5,
+    -4.75
+   ],
+   "expected_arkit_xz": [
+    9.378298658459801,
+    -5.236190320780761
+   ],
+   "slice_xy": [
+    5.5,
+    4.75
+   ],
+   "expected_slice_xy": [
+    9.378298658459801,
+    5.236190320780761
+   ],
+   "inverse_check": [
+    5.499999999999998,
+    -4.749999999999999
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": -0.5518074711480301,
+    "offsetZ": 4.399506540274878,
+    "yawRadians": 3.860265650086296
+   },
+   "arkit_xz": [
+    0.7,
+    -0.2
+   ],
+   "expected_arkit_xz": [
+    -0.9470062334746409,
+    5.010913064819321
+   ],
+   "slice_xy": [
+    0.7,
+    0.2
+   ],
+   "expected_slice_xy": [
+    -0.947006233474641,
+    -5.010913064819321
+   ],
+   "inverse_check": [
+    0.6999999999999997,
+    -0.19999999999999996
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": -0.5518074711480301,
+    "offsetZ": 4.399506540274878,
+    "yawRadians": 3.860265650086296
+   },
+   "arkit_xz": [
+    1.0,
+    0.0
+   ],
+   "expected_arkit_xz": [
+    -1.304487543860325,
+    5.057892983134855
+   ],
+   "slice_xy": [
+    1.0,
+    -0.0
+   ],
+   "expected_slice_xy": [
+    -1.304487543860325,
+    -5.057892983134855
+   ],
+   "inverse_check": [
+    0.9999999999999998,
+    2.7755575615628914e-16
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": -0.5518074711480301,
+    "offsetZ": 4.399506540274878,
+    "yawRadians": 3.860265650086296
+   },
+   "arkit_xz": [
+    0.0,
+    1.0
+   ],
+   "expected_arkit_xz": [
+    -1.2101939140080078,
+    3.646826467562583
+   ],
+   "slice_xy": [
+    0.0,
+    -1.0
+   ],
+   "expected_slice_xy": [
+    -1.2101939140080078,
+    -3.646826467562583
+   ],
+   "inverse_check": [
+    2.220446049250313e-16,
+    1.0
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": -0.5518074711480301,
+    "offsetZ": 4.399506540274878,
+    "yawRadians": 3.860265650086296
+   },
+   "arkit_xz": [
+    -3.25,
+    2.5
+   ],
+   "expected_arkit_xz": [
+    0.24843665801698434,
+    0.378050419199214
+   ],
+   "slice_xy": [
+    -3.25,
+    -2.5
+   ],
+   "expected_slice_xy": [
+    0.2484366580169841,
+    -0.378050419199214
+   ],
+   "inverse_check": [
+    -3.25,
+    2.4999999999999996
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": -0.5518074711480301,
+    "offsetZ": 4.399506540274878,
+    "yawRadians": 3.860265650086296
+   },
+   "arkit_xz": [
+    5.5,
+    -4.75
+   ],
+   "expected_arkit_xz": [
+    -1.564212267480758,
+    11.595862321388156
+   ],
+   "slice_xy": [
+    5.5,
+    4.75
+   ],
+   "expected_slice_xy": [
+    -1.5642122674807584,
+    -11.595862321388156
+   ],
+   "inverse_check": [
+    5.5,
+    -4.750000000000001
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": -1.5101992759008787,
+    "offsetZ": -1.9990865132507327,
+    "yawRadians": -0.4466583936522017
+   },
+   "arkit_xz": [
+    0.7,
+    -0.2
+   ],
+   "expected_arkit_xz": [
+    -0.7924815524785562,
+    -1.8770977043973032
+   ],
+   "slice_xy": [
+    0.7,
+    0.2
+   ],
+   "expected_slice_xy": [
+    -0.7924815524785562,
+    1.8770977043973032
+   ],
+   "inverse_check": [
+    0.7,
+    -0.19999999999999996
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": -1.5101992759008787,
+    "offsetZ": -1.9990865132507327,
+    "yawRadians": -0.4466583936522017
+   },
+   "arkit_xz": [
+    1.0,
+    0.0
+   ],
+   "expected_arkit_xz": [
+    -0.6083037200047657,
+    -1.5671323417755154
+   ],
+   "slice_xy": [
+    1.0,
+    -0.0
+   ],
+   "expected_slice_xy": [
+    -0.6083037200047657,
+    1.5671323417755154
+   ],
+   "inverse_check": [
+    1.0,
+    0.0
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": -1.5101992759008787,
+    "offsetZ": -1.9990865132507327,
+    "yawRadians": -0.4466583936522017
+   },
+   "arkit_xz": [
+    0.0,
+    1.0
+   ],
+   "expected_arkit_xz": [
+    -1.942153447376096,
+    -1.09719095735462
+   ],
+   "slice_xy": [
+    0.0,
+    -1.0
+   ],
+   "expected_slice_xy": [
+    -1.942153447376096,
+    1.09719095735462
+   ],
+   "inverse_check": [
+    -5.551115123125783e-17,
+    0.9999999999999999
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": -1.5101992759008787,
+    "offsetZ": -1.9990865132507327,
+    "yawRadians": -0.4466583936522017
+   },
+   "arkit_xz": [
+    -3.25,
+    2.5
+   ],
+   "expected_arkit_xz": [
+    -5.5212452612512894,
+    -1.1481986808049065
+   ],
+   "slice_xy": [
+    -3.25,
+    -2.5
+   ],
+   "expected_slice_xy": [
+    -5.5212452612512894,
+    1.1481986808049065
+   ],
+   "inverse_check": [
+    -3.25,
+    2.5
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": -1.5101992759008787,
+    "offsetZ": -1.9990865132507327,
+    "yawRadians": -0.4466583936522017
+   },
+   "arkit_xz": [
+    5.5,
+    -4.75
+   ],
+   "expected_arkit_xz": [
+    5.502008596035024,
+    -3.907342460643574
+   ],
+   "slice_xy": [
+    5.5,
+    4.75
+   ],
+   "expected_slice_xy": [
+    5.502008596035024,
+    3.907342460643574
+   ],
+   "inverse_check": [
+    5.5,
+    -4.75
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": -1.8188060586758494,
+    "offsetZ": 2.2785296005483886,
+    "yawRadians": 2.673025591620587
+   },
+   "arkit_xz": [
+    0.7,
+    -0.2
+   ],
+   "expected_arkit_xz": [
+    -2.5336791418611977,
+    2.1408470855471213
+   ],
+   "slice_xy": [
+    0.7,
+    0.2
+   ],
+   "expected_slice_xy": [
+    -2.5336791418611977,
+    -2.1408470855471213
+   ],
+   "inverse_check": [
+    0.7,
+    -0.20000000000000018
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": -1.8188060586758494,
+    "offsetZ": 2.2785296005483886,
+    "yawRadians": 2.673025591620587
+   },
+   "arkit_xz": [
+    1.0,
+    0.0
+   ],
+   "expected_arkit_xz": [
+    -2.711022389297529,
+    1.8269213417975267
+   ],
+   "slice_xy": [
+    1.0,
+    -0.0
+   ],
+   "expected_slice_xy": [
+    -2.711022389297529,
+    -1.8269213417975267
+   ],
+   "inverse_check": [
+    0.9999999999999999,
+    -1.1102230246251565e-16
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": -1.8188060586758494,
+    "offsetZ": 2.2785296005483886,
+    "yawRadians": 2.673025591620587
+   },
+   "arkit_xz": [
+    0.0,
+    1.0
+   ],
+   "expected_arkit_xz": [
+    -1.3671977999249876,
+    1.386313269926709
+   ],
+   "slice_xy": [
+    0.0,
+    -1.0
+   ],
+   "expected_slice_xy": [
+    -1.3671977999249876,
+    -1.386313269926709
+   ],
+   "inverse_check": [
+    1.1102230246251565e-16,
+    0.9999999999999999
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": -1.8188060586758494,
+    "offsetZ": 2.2785296005483886,
+    "yawRadians": 2.673025591620587
+   },
+   "arkit_xz": [
+    -3.25,
+    2.5
+   ],
+   "expected_arkit_xz": [
+    2.2099176627217645,
+    1.5157156149344908
+   ],
+   "slice_xy": [
+    -3.25,
+    -2.5
+   ],
+   "expected_slice_xy": [
+    2.2099176627217645,
+    -1.5157156149344906
+   ],
+   "inverse_check": [
+    -3.2499999999999996,
+    2.5
+   ]
+  },
+  {
+   "alignment": {
+    "offsetX": -1.8188060586758494,
+    "offsetZ": 2.2785296005483886,
+    "yawRadians": 2.673025591620587
+   },
+   "arkit_xz": [
+    5.5,
+    -4.75
+   ],
+   "expected_arkit_xz": [
+    -8.871135106161683,
+    4.032711747871627
+   ],
+   "slice_xy": [
+    5.5,
+    4.75
+   ],
+   "expected_slice_xy": [
+    -8.871135106161681,
+    -4.032711747871627
+   ],
+   "inverse_check": [
+    5.500000000000001,
+    -4.75
+   ]
+  }
+ ]
+}

@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// 프로젝트(ScanGroup) 하나의 내용 -- 속한 스캔 목록, 플로팅 버튼으로 스캔 추가(각
 /// 스캔은 독립된 세션으로 따로 찍음), ⋯ 메뉴에서 정렬(ScanAlignmentView)과 내보내기.
@@ -11,6 +12,8 @@ struct ProjectGroupDetailView: View {
     @State private var pendingScanName = ""
 
     @State private var isShowingAlignment = false
+    @State private var isImportingAlignment = false
+    @State private var alignmentImportMessage: String?
     @State private var isShowingMergedViewer = false
     @State private var isShowingLocalize = false
     @State private var isExporting = false
@@ -131,6 +134,13 @@ struct ProjectGroupDetailView: View {
                         .disabled(scansInGroup.count < 2)
 
                         Button {
+                            isImportingAlignment = true
+                        } label: {
+                            Label("정렬 파일 가져오기", systemImage: "square.and.arrow.down")
+                        }
+                        .disabled(scansInGroup.count < 2)
+
+                        Button {
                             isShowingMergedViewer = true
                         } label: {
                             Label("합친 mesh 보기", systemImage: "cube.transparent")
@@ -177,6 +187,19 @@ struct ProjectGroupDetailView: View {
                     store.setAlignments(alignments, for: groupID)
                 }
             }
+        }
+        // 데스크탑 정합 워크스페이스가 확정한 group_alignment.json을 되돌려 넣는다
+        // (GroupAlignmentImport). Files 앱에서 고른 파일은 보안 스코프 리소스라
+        // start/stopAccessing을 짝지어 부른다 -- LocalizeView의 정합 파일 가져오기와 같은 패턴.
+        .fileImporter(isPresented: $isImportingAlignment, allowedContentTypes: [.json]) { result in
+            handleAlignmentImport(result)
+        }
+        .alert("정렬 파일 가져오기", isPresented: Binding(
+            get: { alignmentImportMessage != nil }, set: { if !$0 { alignmentImportMessage = nil } }
+        )) {
+            Button("확인") { alignmentImportMessage = nil }
+        } message: {
+            Text(alignmentImportMessage ?? "")
         }
         .fullScreenCover(isPresented: $isShowingMergedViewer) {
             MergedMeshViewer(scans: mergeInputs) { isShowingMergedViewer = false }
@@ -293,6 +316,32 @@ struct ProjectGroupDetailView: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd_HHmmss"
         return formatter.string(from: Date())
+    }
+
+    // MARK: - Alignment import (desktop -> app)
+
+    private func handleAlignmentImport(_ result: Result<URL, Error>) {
+        guard let group else { return }
+        switch result {
+        case .failure(let error):
+            alignmentImportMessage = "가져오기 실패: \(error.localizedDescription)"
+        case .success(let url):
+            let didAccess = url.startAccessingSecurityScopedResource()
+            defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+            do {
+                let parsed = try GroupAlignmentImport.parse(try Data(contentsOf: url), group: group)
+                var merged = group.alignments
+                for (scanID, alignment) in parsed.alignments { merged[scanID] = alignment }
+                store.setAlignments(merged, for: groupID)
+                var lines = ["스캔 \(parsed.alignments.count)개의 정렬을 반영했습니다."]
+                let methods = parsed.methods.values.sorted()
+                if !methods.isEmpty { lines.append("출처: " + Array(Set(methods)).sorted().joined(separator: ", ")) }
+                if !parsed.skipped.isEmpty { lines.append("이 프로젝트에 없는 스캔은 건너뜀: " + parsed.skipped.joined(separator: ", ")) }
+                alignmentImportMessage = lines.joined(separator: "\n")
+            } catch {
+                alignmentImportMessage = error.localizedDescription
+            }
+        }
     }
 
     // MARK: - Export

@@ -99,8 +99,14 @@ ios-capture가 프로젝트(여러 스캔 묶음) 단위로 내보내는 zip은 
   `identity`(정렬한 적 없음). 데스크탑 정합 도구가 값을 고치면 `pins`, `icp`, `manual`
   등으로 바뀌고 `metrics`(inlier, conflict, rmse_m, overlap_m)가 붙을 수 있다.
 - 소비자: scan-to-map-studio `scripts/merge_slicemaps.py`(스캔별 slicemap을 이 변환으로 한
-  격자에 합성). 이 파일은 그 저장소의 `tests/test_merge_slicemaps.py`와 이 저장소의
-  `GroupAlignmentExportTests`가 양쪽에서 고정한다.
+  격자에 합성)와 워크스페이스 서버(`/groups/<프로젝트>`, 저장 시 이 파일을 다시 쓴다),
+  pathfinder `scripts/import-scan-to-map-studio.mjs --alignment`(방을 프로젝트 기준
+  좌표로 옮겨 가져오기), 그리고 앱의 "정렬 파일 가져오기"(`GroupAlignmentImport`, 데스크탑
+  확정본을 되돌려 넣기). 이 파일은 그 저장소의 `tests/test_merge_slicemaps.py`와 이 저장소의
+  `GroupAlignmentExportTests`/`GroupAlignmentImportTests`가 양쪽에서 고정한다.
+- 변환 공식의 세 구현(Swift `ScanAlignment.applyXZ`, Python `studio.merge_slicemaps.ScanAlignment`,
+  JS pathfinder `shared/scanAlignment.mjs`)은 [`alignment-vectors.json`](./alignment-vectors.json)
+  (Python 구현으로 생성한 40개 케이스, 허용 오차 1e-5)을 각자 테스트에서 대조한다.
 
 ### 지도용 프로파일 (부분집합)
 
