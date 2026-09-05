@@ -52,6 +52,20 @@ enum ScanGroupMerger {
         let alignment: ScanAlignment
     }
 
+    /// 첫(기준) 스캔의 바닥 높이(floorplan.json의 floor_height_min). 다른 스캔의 바닥을
+    /// 여기에 맞춘다. 텍스처 합치기(TexturedGroupMerger)도 같은 값을 쓴다.
+    static func referenceFloorY(of scans: [ScanInput]) -> Float? {
+        scans.first.flatMap { FloorPlanRenderer.PersistedMeta.load(from: $0.folderURL)?.floorHeightMin }
+    }
+
+    /// 이 스캔의 바닥을 기준 바닥 높이에 맞추는 Y 오프셋. 어느 쪽이든 바닥 높이를 모르면 0.
+    static func verticalOffset(for scan: ScanInput, referenceFloorY: Float?) -> Float {
+        guard let referenceFloorY,
+              let ownFloorY = FloorPlanRenderer.PersistedMeta.load(from: scan.folderURL)?.floorHeightMin
+        else { return 0 }
+        return referenceFloorY - ownFloorY
+    }
+
     /// 정렬 변환 없이(전부 identity) 합친다 -- 테스트/단순 호출용.
     static func mergeMesh(scanFolderURLs: [URL], weldEpsilon: Float = 0.003) throws -> MergedMesh {
         try mergeMesh(scans: scanFolderURLs.map { ScanInput(folderURL: $0, alignment: .identity) }, weldEpsilon: weldEpsilon)
@@ -67,19 +81,13 @@ enum ScanGroupMerger {
         var positions: [SIMD3<Float>] = []
         var indices: [UInt32] = []
 
-        let referenceFloorY = scans.first.flatMap {
-            FloorPlanRenderer.PersistedMeta.load(from: $0.folderURL)?.floorHeightMin
-        }
+        let baseFloorY = referenceFloorY(of: scans)
 
         for scan in scans {
             let usdzURL = scan.folderURL.appendingPathComponent("scan.usdz")
             guard let raw = try? MeshUnifier.load(usdzURL: usdzURL) else { continue }
 
-            var yOffset: Float = 0
-            if let referenceFloorY,
-               let ownFloorY = FloorPlanRenderer.PersistedMeta.load(from: scan.folderURL)?.floorHeightMin {
-                yOffset = referenceFloorY - ownFloorY
-            }
+            let yOffset = verticalOffset(for: scan, referenceFloorY: baseFloorY)
 
             let vertexOffset = UInt32(positions.count)
             positions.append(contentsOf: raw.positions.map { p in

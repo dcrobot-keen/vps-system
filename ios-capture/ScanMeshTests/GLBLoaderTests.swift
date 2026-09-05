@@ -71,4 +71,40 @@ final class GLBLoaderTests: XCTestCase {
         }
         return out
     }
+
+    /// primitive 여러 개(각자 텍스처)를 쓰고 raw로 다시 읽으면 정점/인덱스/텍스처 바이트가
+    /// primitive별로 그대로 돌아와야 한다 -- TexturedGroupMerger가 스캔별 textured.glb를
+    /// 합칠 때 의존하는 왕복.
+    func testMultiPrimitiveRoundTripKeepsGeometryAndTexturePerPrimitive() throws {
+        let red = try XCTUnwrap(GLBWriter.encodePNG(rgba: [255, 0, 0, 255], width: 1, height: 1))
+        let blue = try XCTUnwrap(GLBWriter.encodePNG(rgba: [0, 0, 255, 255], width: 1, height: 1))
+        let first = GLBWriter.Primitive(
+            positions: [0, 0, 0, 1, 0, 0, 0, 1, 0], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1],
+            uvs: [0, 0, 1, 0, 0, 1], indices: nil, imageData: red, imageMimeType: "image/png"
+        )
+        let second = GLBWriter.Primitive(
+            positions: [5, 0, 0, 6, 0, 0, 5, 1, 0, 6, 1, 0], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1],
+            uvs: [0, 0, 1, 0, 0, 1, 1, 1], indices: [0, 1, 2, 2, 1, 3], imageData: blue, imageMimeType: "image/png"
+        )
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("multi-\(UUID().uuidString).glb")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try GLBWriter.write(primitives: [first, second], to: url)
+
+        let raws = try GLBLoader.loadPrimitives(at: url)
+        XCTAssertEqual(raws.count, 2)
+        XCTAssertEqual(raws[0].positions.count, 3)
+        XCTAssertNil(raws[0].indices, "non-indexed는 nil로 돌아와야 정점 순서 삼각형으로 다시 쓸 수 있다")
+        XCTAssertEqual(raws[0].imageData, red)
+        XCTAssertEqual(raws[0].imageMimeType, "image/png")
+        XCTAssertTrue(raws[0].hasMaterial)
+
+        XCTAssertEqual(raws[1].positions.count, 4)
+        XCTAssertEqual(raws[1].positions[3], SIMD3(6, 1, 0))
+        XCTAssertEqual(raws[1].indices, [0, 1, 2, 2, 1, 3])
+        XCTAssertEqual(raws[1].uvs?.count, 4)
+        XCTAssertEqual(raws[1].imageData, blue)
+
+        let scene = try GLBLoader.loadScene(at: url)
+        XCTAssertEqual(scene.rootNode.childNodes.count, 2)
+    }
 }

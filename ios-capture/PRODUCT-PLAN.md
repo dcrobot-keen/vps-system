@@ -353,6 +353,24 @@ floorplan.png의 "벽"은 선이 아니라 분류 삼각형을 채운 덩어리�
   (ARKit .gravity 정렬 문서 기준)은 실기에서 두 방이 실제로 맞게 놓이는지로 확인해야 한다
   — 틀리면 yaw만 상수 오프셋이 날 것.
 
+**합친 mesh 텍스처(2026-09-04, "합친 mesh 텍스쳐 입히기 기능은 없는 듯"):** 스캔별
+`textured.glb`(TextureBaker)를 합치는 방식으로 결정(1번) — 합친 mesh를 통째로 다시 굽는
+방식(2번)은 겹치지 않는 방들엔 이점이 없고 아틀라스 상한(2048)을 나눠 써서 해상도만
+떨어진다.
+- `GLBWriter.write(primitives:)`: mesh 하나에 primitive 여러 개, primitive마다 텍스처 하나
+  (이미 인코딩된 png/jpeg 바이트를 그대로 담음, indexed/non-indexed 둘 다). 기존
+  `write(positions:...)`는 이 위의 래퍼. `GLBLoader.loadPrimitives`: SceneKit 없이 raw로
+  꺼내는 API(`RawPrimitive`), `loadScene`은 그걸로 만든다.
+- `TexturedGroupMerger`(신규): 스캔별 textured.glb를 읽어 정점에 정렬 변환 + 바닥 높이
+  오프셋(ScanGroupMerger와 같은 `referenceFloorY`/`verticalOffset`), normal엔 yaw 회전만
+  적용해 GLB 하나로. 안 구운 스캔은 `bakeMissing`이면 TextureBaker로 먼저 굽고(진행 콜백),
+  scan.usdz 없는 스캔은 건너뛴 수를 Summary로 알린다.
+- UI: "합친 mesh 보기" 툴바의 **텍스처** 버튼(회색 mesh 먼저, 누르면 굽기/합치기 진행
+  문구 후 장면 교체), 내보내기에 **"GLB (합쳐진 mesh, 텍스처)"** 추가(진행 문구를 화면
+  아래에 표시). 프로젝트 화면에서 자동으로 구운 스캔은 floorplan.png 바닥 재색칠은 안
+  한다(그건 스캔 화면의 "텍스처 생성"에서만).
+- 실기 검증 안 됨(GLB 왕복/변환은 테스트로 고정: GLBLoaderTests, TexturedGroupMergerTests).
+
 ## 결정 (2026-09-04) — 5개 전부 완료
 1. ~~제품명(영/한) + 번들 ID~~ → **ScanMesh**(영문만 — 2026-09-04 한글 표기 "스캔메시"는 버림, 앱 안에서 이름은 안 쓰고 홈 화면 아이콘 라벨만 `CFBundleDisplayName = ScanMesh`), `com.dcrobot.scanmesh`. **아이콘도 같은 날 교체**: 타이포 톤(Bahnschrift 볼드 "S" 모노그램 안에 삼각 mesh 와이어프레임 + 정점, 예전 아이콘의 스캔 프레임 코너 브래킷은 작게 유지). 라이트(네이비/청록)·다크(검정/민트)·틴트(회색조) 3종, 1024² RGB 알파 없음. 생성 스크립트는 `ios-capture/design-make-icon.ps1`(Windows PowerShell + System.Drawing)로 재현 가능 (2026-09-04 재확인: 위치확인/바닥 평면까지 기능이 늘었어도 여전히 유효 — 스캔이 핵심 동작이고 나머지는 그 파생 산출물이라는 판단. 표시 이름은 번들 ID와 달리 언제든 바꿀 수 있어 되돌릴 수 없는 결정이 아님)
 2. ~~개발자 계정 주체~~ → **개인**

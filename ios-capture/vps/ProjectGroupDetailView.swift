@@ -14,6 +14,7 @@ struct ProjectGroupDetailView: View {
     @State private var isShowingMergedViewer = false
     @State private var isShowingLocalize = false
     @State private var isExporting = false
+    @State private var exportProgressText: String?
     @State private var exportShareItem: ShareItem?
     @State private var exportErrorMessage: String?
 
@@ -24,13 +25,14 @@ struct ProjectGroupDetailView: View {
     /// (ScanExportProfile): 전체(VPS DB용, 방당 수백 MB)와 지도용(usdz·바닥평면·궤적만,
     /// 수 MB) -- 2D 지도/시뮬레이터/정렬 작업엔 지도용으로 충분하다.
     private enum ExportFormat: String, CaseIterable, Identifiable {
-        case ply, pcd, glb, zipMap, zip
+        case ply, pcd, glb, glbTextured, zipMap, zip
         var id: String { rawValue }
         var label: String {
             switch self {
             case .ply: return "PLY (합쳐진 mesh)"
             case .pcd: return "PCD (합쳐진 포인트)"
             case .glb: return "GLB (합쳐진 mesh)"
+            case .glbTextured: return "GLB (합쳐진 mesh, 텍스처)"
             case .zipMap: return ScanExportProfile.map.label
             case .zip: return ScanExportProfile.full.label
             }
@@ -94,6 +96,23 @@ struct ProjectGroupDetailView: View {
 
             FloatingActionButton(systemImage: "camera.viewfinder") {
                 startNewScan()
+            }
+
+            // 텍스처 GLB 내보내기는 안 구운 스캔을 먼저 굽느라 오래 걸릴 수 있어 진행 문구를 보여준다.
+            if let exportProgressText {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Text(exportProgressText)
+                            .font(.footnote.monospacedDigit())
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(.thinMaterial, in: Capsule())
+                        Spacer()
+                    }
+                    .padding(.leading, 16)
+                    .padding(.bottom, 24)
+                }
             }
         }
         .navigationTitle(group?.name ?? "프로젝트")
@@ -293,18 +312,22 @@ struct ProjectGroupDetailView: View {
 
         isExporting = true
         exportErrorMessage = nil
+        exportProgressText = nil
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 let destURL = try Self.buildExportFile(
-                    format: format, scans: scans, projectName: projectName, alignmentJSON: alignmentJSON
+                    format: format, scans: scans, projectName: projectName, alignmentJSON: alignmentJSON,
+                    onProgress: { text in DispatchQueue.main.async { exportProgressText = text } }
                 )
                 DispatchQueue.main.async {
                     isExporting = false
+                    exportProgressText = nil
                     exportShareItem = ShareItem(url: destURL)
                 }
             } catch {
                 DispatchQueue.main.async {
                     isExporting = false
+                    exportProgressText = nil
                     exportErrorMessage = error.localizedDescription
                 }
             }
@@ -312,7 +335,8 @@ struct ProjectGroupDetailView: View {
     }
 
     private static func buildExportFile(
-        format: ExportFormat, scans: [ScanGroupMerger.ScanInput], projectName: String, alignmentJSON: Data? = nil
+        format: ExportFormat, scans: [ScanGroupMerger.ScanInput], projectName: String, alignmentJSON: Data? = nil,
+        onProgress: @escaping (String) -> Void = { _ in }
     ) throws -> URL {
         let tempDir = FileManager.default.temporaryDirectory
         // 프로젝트 이름은 자유 텍스트라(경로 구분자 등도 입력 가능) 파일 이름으로
@@ -323,8 +347,8 @@ struct ProjectGroupDetailView: View {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let safeName = sanitized.isEmpty ? "project" : sanitized
 
-        func fresh(_ ext: String) -> URL {
-            let url = tempDir.appendingPathComponent("\(safeName).\(ext)")
+        func fresh(_ ext: String, suffix: String = "") -> URL {
+            let url = tempDir.appendingPathComponent("\(safeName)\(suffix).\(ext)")
             try? FileManager.default.removeItem(at: url)
             return url
         }
@@ -350,6 +374,15 @@ struct ProjectGroupDetailView: View {
             let merged = try ScanGroupMerger.mergeMesh(scans: scans)
             let url = fresh("pcd")
             try PCDWriter.write(positions: merged.positions, to: url)
+            return url
+
+        case .glbTextured:
+            // 스캔별 textured.glb를(없으면 먼저 굽고) 정렬 변환 적용해 primitive 여러 개짜리
+            // GLB 하나로 -- "합친 mesh 보기"의 텍스처 버튼과 같은 결과물(TexturedGroupMerger).
+            let url = fresh("glb", suffix: "-textured")
+            _ = try TexturedGroupMerger.merge(scans: scans, to: url, bakeMissing: true) { progress in
+                onProgress(MergedMeshViewer.statusText(for: progress))
+            }
             return url
 
         case .glb:
