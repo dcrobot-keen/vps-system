@@ -86,6 +86,20 @@ ios-capture가 프로젝트(여러 스캔 묶음) 단위로 내보내는 zip은 
   격자에 합성). 이 파일은 그 저장소의 `tests/test_merge_slicemaps.py`와 이 저장소의
   `GroupAlignmentExportTests`가 양쪽에서 고정한다.
 
+### 지도용 프로파일 (부분집합)
+
+프로젝트 zip은 두 프로파일로 나간다(앱 `ScanExportProfile`).
+
+| 프로파일 | 들어가는 것 | 크기(방 하나) | 용도 |
+|---|---|---|---|
+| 전체 | 위 폴더 구조 전부 | 수백 MB | VPS DB 빌드(hloc), 텍스처 |
+| 지도용 | `manifest.json`, `poses/poses.jsonl`, `scan.usdz`, `floorplan.png`, `floorplan.json` (+ `group_alignment.json`) | 수 MB | 2D 지도, 슬라이스, 시뮬레이터 월드, 정렬 워크스페이스 |
+
+지도용은 scan_<name>/의 **부분집합**이라 `conformance_check.py`를 통과하지 않는다
+(rgb/depth 없음). scan-to-map-studio의 `studio.py process --usdz`, `slice_map.py`,
+`merge_slicemaps.py`, `align_workspace.py`는 이 부분집합만으로 동작하고, vps-system
+`pipeline`(DB 빌드)은 전체 프로파일이 필요하다.
+
 ## 검증
 
 같은 폴더의 `conformance_check.py`로 최소 구조/필드 유효성을 확인할 수 있다(단, `manifest.json`/`poses.jsonl`을 실제로 읽는 저장소, 즉 `vps-system`과 `dc-vps-digital-twin`에서만 유의미하다):

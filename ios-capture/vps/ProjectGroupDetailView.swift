@@ -20,16 +20,19 @@ struct ProjectGroupDetailView: View {
     /// export 시 고를 수 있는 형식(2026-09-04 결정) -- 프로젝트(합쳐진 것) 단위만
     /// 지원한다, 스캔 개별 export는 범위 밖. ply/pcd/glb는 그룹 안 스캔들의
     /// scan.usdz를 정렬 변환 적용 후 합친 mesh(ScanGroupMerger)에서 나오고, zip은 스캔
-    /// 폴더들을 그냥 논리적으로 묶는다(ZipArchiver.zip(directories:)).
+    /// 폴더들을 그냥 논리적으로 묶는다(ZipArchiver.zip(directories:)). zip은 두 프로파일
+    /// (ScanExportProfile): 전체(VPS DB용, 방당 수백 MB)와 지도용(usdz·바닥평면·궤적만,
+    /// 수 MB) -- 2D 지도/시뮬레이터/정렬 작업엔 지도용으로 충분하다.
     private enum ExportFormat: String, CaseIterable, Identifiable {
-        case ply, pcd, glb, zip
+        case ply, pcd, glb, zipMap, zip
         var id: String { rawValue }
         var label: String {
             switch self {
             case .ply: return "PLY (합쳐진 mesh)"
             case .pcd: return "PCD (합쳐진 포인트)"
             case .glb: return "GLB (합쳐진 mesh)"
-            case .zip: return "프로젝트 전체 (zip)"
+            case .zipMap: return ScanExportProfile.map.label
+            case .zip: return ScanExportProfile.full.label
             }
         }
     }
@@ -327,13 +330,14 @@ struct ProjectGroupDetailView: View {
         }
 
         switch format {
-        case .zip:
-            let url = fresh("zip")
+        case .zip, .zipMap:
+            let profile: ScanExportProfile = format == .zipMap ? .map : .full
+            let url = fresh(profile == .map ? "map.zip" : "zip")
             var extras: [ZipArchiver.ExtraFile] = []
             if let alignmentJSON {
                 extras.append(.init(name: GroupAlignmentExport.fileName, data: alignmentJSON))
             }
-            try ZipArchiver.zip(directories: scans.map(\.folderURL), extraFiles: extras, to: url)
+            try ZipArchiver.zip(directories: scans.map(\.folderURL), extraFiles: extras, include: profile.zipFilter, to: url)
             return url
 
         case .ply:

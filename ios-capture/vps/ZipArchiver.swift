@@ -29,8 +29,15 @@ enum ZipArchiver {
     /// (ScanGroupStore 참고) zip을 만들 때만 이렇게 논리적으로 묶는다. 폴더가 하나뿐이면
     /// (기존 `zip(directory:to:)` 호출) 지금까지와 완전히 같게 접두사 없이 그대로
     /// 씀 -- VPSUploadClient 등 기존 소비자가 최상위에 rgb/depth/poses를 그대로 기대함.
-    /// `extraFiles`는 접두사 없이 zip 최상위에 폴더들 뒤에 이어 쓴다.
-    static func zip(directories: [URL], extraFiles: [ExtraFile], to destinationURL: URL) throws {
+    /// `extraFiles`는 접두사 없이 zip 최상위에 폴더들 뒤에 이어 쓴다. `include`를 주면
+    /// 폴더 안 상대경로(접두사 없음, `/` 구분)가 true인 파일만 들어간다 --
+    /// ScanExportProfile.map이 rgb/depth 프레임을 빼고 지도용 파일만 남길 때 쓴다.
+    static func zip(
+        directories: [URL],
+        extraFiles: [ExtraFile],
+        include: ((String) -> Bool)? = nil,
+        to destinationURL: URL
+    ) throws {
         let fm = FileManager.default
         if fm.fileExists(atPath: destinationURL.path) {
             try fm.removeItem(at: destinationURL)
@@ -113,7 +120,9 @@ enum ZipArchiver {
                 if isDirectory.boolValue { continue }
 
                 let resolvedComponents = fileURL.resolvingSymlinksInPath().pathComponents
-                let relativePath = entryPrefix + resolvedComponents.dropFirst(baseComponents.count).joined(separator: "/")
+                let insidePath = resolvedComponents.dropFirst(baseComponents.count).joined(separator: "/")
+                if let include, !include(insidePath) { continue }
+                let relativePath = entryPrefix + insidePath
                 let fileData = try Data(contentsOf: fileURL)
                 let (dosTime, dosDate) = dosDateTime(for: fileURL)
                 writeEntry(name: relativePath, data: fileData, dosTime: dosTime, dosDate: dosDate)

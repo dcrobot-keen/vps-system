@@ -108,6 +108,32 @@ final class ZipArchiverTests: XCTestCase {
         XCTAssertEqual(byName["scan_B/manifest.json"]?.data, Data("B".utf8))
         XCTAssertEqual(byName["group_alignment.json"]?.data, alignment)
     }
+
+    /// 지도용 프로파일: 폴더 안 상대경로 필터로 rgb/depth를 빼고 지도 파일만 남긴다.
+    /// 필터는 접두사 없는 폴더 내부 경로를 받아야 한다(접두사가 붙으면 map 파일 목록과
+    /// 대조가 안 됨).
+    func testIncludeFilterDropsFramesAndKeepsMapFiles() throws {
+        let root = sourceDir.deletingLastPathComponent()
+        let dirA = root.appendingPathComponent("scan_A")
+        for sub in ["rgb", "depth", "poses"] {
+            try FileManager.default.createDirectory(at: dirA.appendingPathComponent(sub), withIntermediateDirectories: true)
+        }
+        try Data("m".utf8).write(to: dirA.appendingPathComponent("manifest.json"))
+        try Data("u".utf8).write(to: dirA.appendingPathComponent("scan.usdz"))
+        try Data("p".utf8).write(to: dirA.appendingPathComponent("poses/poses.jsonl"))
+        try Data("j".utf8).write(to: dirA.appendingPathComponent("rgb/frame_00001.jpg"))
+        try Data("d".utf8).write(to: dirA.appendingPathComponent("depth/frame_00001.depth"))
+        // a second scan that has frames only: contributes nothing under the map profile
+        let dirB = root.appendingPathComponent("scan_B")
+        try FileManager.default.createDirectory(at: dirB.appendingPathComponent("rgb"), withIntermediateDirectories: true)
+        try Data("j".utf8).write(to: dirB.appendingPathComponent("rgb/frame_00001.jpg"))
+
+        try ZipArchiver.zip(directories: [dirA, dirB], extraFiles: [], include: ScanExportProfile.map.zipFilter, to: zipURL)
+
+        let entries = try MinimalZipReader.readEntries(from: try Data(contentsOf: zipURL))
+        XCTAssertEqual(entries.count, 3)
+        XCTAssertEqual(Set(entries.map(\.name)), ["scan_A/manifest.json", "scan_A/scan.usdz", "scan_A/poses/poses.jsonl"])
+    }
 }
 
 /// `ZipArchiver`가 쓰는 것과 정확히 같은 최소 포맷(로컬 헤더 연속, store 방식, 압축
