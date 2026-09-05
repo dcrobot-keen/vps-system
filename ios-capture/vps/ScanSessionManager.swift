@@ -63,8 +63,11 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
 
     private var lastCaptureTimestamp: TimeInterval = 0
     private var lastCameraPosition: simd_float3?
-    private let captureIntervalSeconds: TimeInterval = 0.1
-    private let captureMinDistanceMeters: Float = 0.2
+    // 저장 게이트: 0.1초 상한 + (0.2 m 이동 또는 15° 회전) -- CaptureGate 참고
+    private let captureGate = CaptureGate(intervalSeconds: 0.1, minDistanceMeters: 0.2, minRotationRadians: 15 * .pi / 180)
+    private var captureIntervalSeconds: TimeInterval { captureGate.intervalSeconds }
+    private var captureMinDistanceMeters: Float { captureGate.minDistanceMeters }
+    private var lastCameraTransform: simd_float4x4?
 
     /// 최근 저장된 프레임들의 카메라 위치(월드 좌표). 텍스처 커버리지 안내용 —
     /// isCameraStationary 참고. 저장되는 프레임에서만 채우므로(모든 ARFrame이
@@ -158,6 +161,7 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         frameIndex = 0
         lastCaptureTimestamp = 0
         lastCameraPosition = nil
+        lastCameraTransform = nil
         recentCameraPositions = []
         scanPathXZ = []
         lastStorageCheckTimestamp = 0
@@ -644,25 +648,24 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
 
     // MARK: - Capture throttling
 
-    /// 시간 간격(0.1s) 또는 이동거리(0.2m) 기준으로 프레임을 샘플링한다.
-    /// 60fps 그대로 저장하면 몇 분 스캔에도 수만 장이 쌓이므로 스로틀링이 필수다.
+    /// 움직였을 때만(0.2 m 이동 또는 15° 회전), 0.1초에 한 장을 상한으로 저장한다
+    /// (CaptureGate). 예전 "0.1초 지나면 무조건"은 서 있어도 초당 10장을 쌓았다.
     private func shouldCapture(_ frame: ARFrame) -> Bool {
         guard frame.camera.trackingState == .normal else { return false }
 
         let elapsed = frame.timestamp - lastCaptureTimestamp
-        let position = simd_float3(
-            frame.camera.transform.columns.3.x,
-            frame.camera.transform.columns.3.y,
-            frame.camera.transform.columns.3.z
-        )
-        let distance = lastCameraPosition.map { simd_distance($0, position) } ?? .greatestFiniteMagnitude
+        let transform = frame.camera.transform
+        let position = CaptureGate.position(of: transform)
+        let distance = lastCameraPosition.map { simd_distance($0, position) }
+        let angle = lastCameraTransform.map { CaptureGate.rotationAngle(from: $0, to: transform) }
 
-        guard elapsed >= captureIntervalSeconds || distance >= captureMinDistanceMeters else {
+        guard captureGate.shouldSave(elapsed: elapsed, distance: distance, angle: angle) else {
             return false
         }
 
         lastCaptureTimestamp = frame.timestamp
         lastCameraPosition = position
+        lastCameraTransform = transform
         return true
     }
 
@@ -678,7 +681,7 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
               let jpegData = ciContext.jpegRepresentation(
                   of: redacted,
                   colorSpace: colorSpace,
-                  options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.85]
+                  options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.8]
               )
         else {
             logger.error("frame \(index): JPEG 인코딩 실패")
@@ -831,6 +834,7 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
             frameCount: frameIndex,
             captureIntervalSeconds: captureIntervalSeconds,
             captureMinDistanceMeters: captureMinDistanceMeters,
+            captureMinRotationDegrees: captureGate.minRotationDegrees,
             depthEncoding: lastDepthSize.map { DepthEncoding.manifestEntry(width: $0.width, height: $0.height) }
         )
         do {

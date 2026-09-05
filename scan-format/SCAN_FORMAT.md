@@ -18,7 +18,9 @@ scan_<name>/
 
 ## manifest.json
 
-전체 필드는 [`manifest.schema.json`](./manifest.schema.json) 참고. `session_name`, `device_model`, `system_version`, `start_time`/`end_time`(유닉스 epoch 초), `frame_count`, `capture_interval_seconds`, `capture_min_distance_meters`.
+전체 필드는 [`manifest.schema.json`](./manifest.schema.json) 참고. `session_name`, `device_model`, `system_version`, `start_time`/`end_time`(유닉스 epoch 초), `frame_count`, `capture_interval_seconds`, `capture_min_distance_meters`, 그리고 2026-09-05부터 `capture_min_rotation_degrees`와 `depth_encoding`(아래).
+
+**프레임 저장 규칙(2026-09-05부터)**: `elapsed >= capture_interval_seconds` **이고** (`capture_min_distance_meters` 이상 이동 **또는** `capture_min_rotation_degrees` 이상 회전)일 때만 저장한다. 서 있으면 저장하지 않고, 제자리 회전은 각도 임계마다, 걷기는 거리 임계마다 저장되며 interval은 최대 저장률일 뿐이다. `capture_min_rotation_degrees`가 없는 옛 스캔은 "interval이 지나면 무조건" 규칙이라 정지 중에도 초당 10장이 쌓여 있다. JPEG 품질은 0.8(이전 0.85), 해상도는 hloc의 1600 px 리사이즈 때문에 1920×1440을 유지한다.
 
 **2026-08-29 기준 이 파일을 읽는 Python 코드는 없다** — `ios-capture` 앱 자체(`ProjectStore.swift`, 온디바이스 갤러리 UI)만 `start_time`/`frame_count`를 읽는다. `pipeline`, `dc-vps-digital-twin`은 `poses/poses.jsonl`만 보고 `manifest.json`은 아예 열지 않는다.
 

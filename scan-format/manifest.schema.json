@@ -23,6 +23,7 @@
     "frame_count": { "type": "integer", "minimum": 0 },
     "capture_interval_seconds": { "type": "number" },
     "capture_min_distance_meters": { "type": "number" },
+    "capture_min_rotation_degrees": { "type": "number", "description": "2026-09-05부터: 프레임은 interval 상한 아래에서 (min_distance 이동 또는 이 각도 회전) 시에만 저장된다. 없으면 옛 규칙(0.1초마다 무조건)." },
     "depth_encoding": {
       "type": "object",
       "description": "depth/*.depth, *.conf의 인코딩. 없으면 v1(float32 둘 다, 192x256). 2026-09-05부터 앱은 v2를 쓴다: depth 'uint16_mm'(0 = 미측정), confidence 'uint8'.",

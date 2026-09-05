@@ -45,6 +45,7 @@ enum ScanRecordBuilder {
         frameCount: Int,
         captureIntervalSeconds: TimeInterval,
         captureMinDistanceMeters: Float,
+        captureMinRotationDegrees: Float? = nil,
         depthEncoding: [String: Any]? = nil
     ) -> [String: Any] {
         var manifest: [String: Any] = [
@@ -57,6 +58,10 @@ enum ScanRecordBuilder {
             "capture_interval_seconds": captureIntervalSeconds,
             "capture_min_distance_meters": captureMinDistanceMeters,
         ]
+        // 저장 게이트의 회전 임계(CaptureGate). 옛 스캔(거리+시간만)에는 없다.
+        if let captureMinRotationDegrees {
+            manifest["capture_min_rotation_degrees"] = captureMinRotationDegrees
+        }
         // depth/*.depth, *.conf 인코딩(DepthEncoding.manifestEntry). 없으면 읽는 쪽은 v1로
         // 본다 -- depth 프레임을 하나도 못 쓴 세션에서만 비어 있다.
         if let depthEncoding {
