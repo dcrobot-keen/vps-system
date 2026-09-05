@@ -22,7 +22,7 @@ from PIL import Image
 
 from . import config
 from .geometry import backproject_filtered, scale_intrinsics_to_depth
-from .scan_loader import load_depth_raw, load_scan
+from .scan_loader import load_confidence_raw, load_depth_raw, load_scan
 
 
 def build_db(scan_dir: Path, output_dir: Path) -> None:
@@ -58,7 +58,7 @@ def build_db(scan_dir: Path, output_dir: Path) -> None:
             depth = load_depth_raw(frame.depth_path, config.DEPTH_WIDTH, config.DEPTH_HEIGHT)
             confidence_path = frame.depth_path.with_suffix(".conf")
             confidence = (
-                load_depth_raw(confidence_path, config.DEPTH_WIDTH, config.DEPTH_HEIGHT)
+                load_confidence_raw(confidence_path, config.DEPTH_WIDTH, config.DEPTH_HEIGHT)
                 if confidence_path.exists()
                 else None
             )

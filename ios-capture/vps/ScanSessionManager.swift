@@ -695,13 +695,45 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         }
     }
 
+    /// 마지막으로 저장한 depth 프레임의 해상도 -- manifest의 `depth_encoding.width/height`.
+    private var lastDepthSize: (width: Int, height: Int)?
+
+    /// v2 인코딩(DepthEncoding): depth는 uint16 mm, confidence는 uint8 원본. v1(둘 다
+    /// float32)을 쓰던 `writeRawFloat32`/`writeConfidenceAsFloat32`는 더 이상 쓰지 않는다 --
+    /// 읽는 쪽은 파일 크기로 두 버전을 구분하므로 옛 스캔도 그대로 읽힌다.
     private func saveDepth(_ depthMap: CVPixelBuffer, confidenceMap: CVPixelBuffer?, index: Int) {
-        writeRawFloat32(depthMap, to: depthDir.appendingPathComponent("frame_\(paddedIndex(index)).depth"), index: index, label: "depth")
+        CVPixelBufferLockBaseAddress(depthMap, .readOnly)
+        let depthData = DepthEncoding.encodeDepth(lockedPixelBuffer: depthMap)
+        let size = (width: CVPixelBufferGetWidth(depthMap), height: CVPixelBufferGetHeight(depthMap))
+        CVPixelBufferUnlockBaseAddress(depthMap, .readOnly)
+        guard let depthData else {
+            logger.error("frame \(index): depth 버퍼 주소를 못 얻음")
+            recordSaveFailure()
+            return
+        }
+        lastDepthSize = size
+        do {
+            try depthData.write(to: depthDir.appendingPathComponent("frame_\(paddedIndex(index)).depth"))
+        } catch {
+            logger.error("frame \(index): depth 쓰기 실패 -- \(error.localizedDescription, privacy: .public)")
+            recordSaveFailure()
+        }
+
         if let confidenceMap {
-            // confidenceMap은 OneComponent8(UInt8, 0=low/1=medium/2=high)로 나오지만
-            // pipeline의 load_depth_raw가 depth와 동일하게 float32로 읽으므로
-            // 저장 단계에서 float32로 변환해 둔다.
-            writeConfidenceAsFloat32(confidenceMap, to: depthDir.appendingPathComponent("frame_\(paddedIndex(index)).conf"), index: index)
+            CVPixelBufferLockBaseAddress(confidenceMap, .readOnly)
+            let confData = DepthEncoding.encodeConfidence(lockedPixelBuffer: confidenceMap)
+            CVPixelBufferUnlockBaseAddress(confidenceMap, .readOnly)
+            guard let confData else {
+                logger.error("frame \(index): confidence 버퍼 주소를 못 얻음")
+                recordSaveFailure()
+                return
+            }
+            do {
+                try confData.write(to: depthDir.appendingPathComponent("frame_\(paddedIndex(index)).conf"))
+            } catch {
+                logger.error("frame \(index): confidence 쓰기 실패 -- \(error.localizedDescription, privacy: .public)")
+                recordSaveFailure()
+            }
         }
     }
 
@@ -798,7 +830,8 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
             endTime: Date().timeIntervalSince1970,
             frameCount: frameIndex,
             captureIntervalSeconds: captureIntervalSeconds,
-            captureMinDistanceMeters: captureMinDistanceMeters
+            captureMinDistanceMeters: captureMinDistanceMeters,
+            depthEncoding: lastDepthSize.map { DepthEncoding.manifestEntry(width: $0.width, height: $0.height) }
         )
         do {
             let data = try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted])

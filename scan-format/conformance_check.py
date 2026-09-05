@@ -21,27 +21,47 @@ HERE = Path(__file__).parent
 MANIFEST_SCHEMA = json.loads((HERE / "manifest.schema.json").read_text(encoding="utf-8"))
 POSE_SCHEMA = json.loads((HERE / "pose-record.schema.json").read_text(encoding="utf-8"))
 
-# poses.jsonl이 가리키는 .depth 파일의 실제 크기 검증용. 이 (192, 256) 크기는
-# 세 Python 소비자 전부에 각자 하드코딩돼 있고 manifest.json/poses.jsonl
-# 어디에도 명시적으로 기록되지 않는다 -- SCAN_FORMAT.md의 "알려진 취약점"
-# 참고. 다른 기기가 다른 LiDAR 해상도를 쓰게 되면 이 상수부터 확인할 것.
+# v1 스캔(manifest에 depth_encoding 없음)의 depth 해상도. v1에서는 이 크기가 세 Python
+# 소비자에 각자 하드코딩돼 있고 어디에도 기록되지 않는다 -- v2부터는 manifest의
+# depth_encoding.width/height가 정본이다(SCAN_FORMAT.md "depth/*.depth" 참고).
 DEPTH_HEIGHT, DEPTH_WIDTH = 192, 256
-DEPTH_BYTES = DEPTH_HEIGHT * DEPTH_WIDTH * 4  # float32
+BYTES_PER_SAMPLE = {"float32_m": 4, "float32": 4, "uint16_mm": 2, "uint8": 1}
+
+
+def expected_frame_bytes(manifest: dict | None) -> tuple[int, int, str]:
+    """(depth 파일 크기, conf 파일 크기, 설명) -- manifest의 depth_encoding에 따라."""
+    enc = (manifest or {}).get("depth_encoding")
+    if not enc:
+        n = DEPTH_HEIGHT * DEPTH_WIDTH
+        return n * 4, n * 4, f"v1 {DEPTH_HEIGHT}x{DEPTH_WIDTH} float32/float32"
+    n = int(enc["height"]) * int(enc["width"])
+    d, c = enc["depth"], enc["confidence"]
+    if d not in BYTES_PER_SAMPLE or c not in BYTES_PER_SAMPLE:
+        raise ValueError(f"알 수 없는 depth_encoding: depth={d!r} confidence={c!r}")
+    return n * BYTES_PER_SAMPLE[d], n * BYTES_PER_SAMPLE[c], f"v{enc.get('format_version')} {enc['height']}x{enc['width']} {d}/{c}"
 
 
 def check(scan_dir: Path) -> list[str]:
     errors = []
 
+    manifest = None
     manifest_path = scan_dir / "manifest.json"
     if not manifest_path.exists():
         errors.append(f"manifest.json 없음: {manifest_path}")
     else:
         try:
-            jsonschema.validate(json.loads(manifest_path.read_text(encoding="utf-8")), MANIFEST_SCHEMA)
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            jsonschema.validate(manifest, MANIFEST_SCHEMA)
         except json.JSONDecodeError as e:
             errors.append(f"manifest.json이 유효한 JSON이 아님: {e}")
         except jsonschema.ValidationError as e:
             errors.append(f"manifest.json 스키마 위반: {e.message}")
+
+    try:
+        depth_bytes, conf_bytes, encoding_desc = expected_frame_bytes(manifest)
+    except (ValueError, KeyError) as e:
+        errors.append(f"manifest.json depth_encoding 해석 실패: {e}")
+        depth_bytes, conf_bytes, encoding_desc = expected_frame_bytes(None)
 
     poses_path = scan_dir / "poses" / "poses.jsonl"
     if not poses_path.exists():
@@ -69,14 +89,17 @@ def check(scan_dir: Path) -> list[str]:
             depth_path = scan_dir / record["depth_path"]
             if depth_path.exists():
                 size = depth_path.stat().st_size
-                if size != DEPTH_BYTES:
+                if size != depth_bytes:
                     errors.append(
-                        f"{depth_path} 크기가 {size}바이트, 예상 {DEPTH_BYTES}바이트"
-                        f"({DEPTH_HEIGHT}x{DEPTH_WIDTH} float32)와 다름"
+                        f"{depth_path} 크기가 {size}바이트, 예상 {depth_bytes}바이트({encoding_desc})와 다름"
                     )
                 conf_path = depth_path.with_suffix(".conf")
                 if not conf_path.exists():
                     errors.append(f"{depth_path}의 짝인 .conf 파일 없음: {conf_path}")
+                elif conf_path.stat().st_size != conf_bytes:
+                    errors.append(
+                        f"{conf_path} 크기가 {conf_path.stat().st_size}바이트, 예상 {conf_bytes}바이트({encoding_desc})와 다름"
+                    )
 
     if not (scan_dir / "scan.usdz").exists():
         errors.append(f"scan.usdz 없음: {scan_dir / 'scan.usdz'}")

@@ -23,7 +23,7 @@ from PIL import Image
 
 from . import config
 from .geometry import scale_intrinsics_to_depth
-from .scan_loader import ScanFrame, load_depth_raw, load_scan
+from .scan_loader import ScanFrame, load_confidence_raw, load_depth_raw, load_scan
 
 
 def _sample_rgb_colors(rgb_path: Path, u_depth: np.ndarray, v_depth: np.ndarray) -> np.ndarray:
@@ -39,7 +39,7 @@ def backproject_frame_dense(frame: ScanFrame) -> tuple[np.ndarray, np.ndarray | 
     depth = load_depth_raw(frame.depth_path, config.DEPTH_WIDTH, config.DEPTH_HEIGHT)
     confidence_path = frame.depth_path.with_suffix(".conf")
     confidence = (
-        load_depth_raw(confidence_path, config.DEPTH_WIDTH, config.DEPTH_HEIGHT)
+        load_confidence_raw(confidence_path, config.DEPTH_WIDTH, config.DEPTH_HEIGHT)
         if confidence_path.exists()
         else None
     )

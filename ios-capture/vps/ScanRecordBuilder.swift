@@ -44,9 +44,10 @@ enum ScanRecordBuilder {
         endTime: TimeInterval,
         frameCount: Int,
         captureIntervalSeconds: TimeInterval,
-        captureMinDistanceMeters: Float
+        captureMinDistanceMeters: Float,
+        depthEncoding: [String: Any]? = nil
     ) -> [String: Any] {
-        [
+        var manifest: [String: Any] = [
             "session_name": sessionName,
             "device_model": deviceModel,
             "system_version": systemVersion,
@@ -56,5 +57,11 @@ enum ScanRecordBuilder {
             "capture_interval_seconds": captureIntervalSeconds,
             "capture_min_distance_meters": captureMinDistanceMeters,
         ]
+        // depth/*.depth, *.conf 인코딩(DepthEncoding.manifestEntry). 없으면 읽는 쪽은 v1로
+        // 본다 -- depth 프레임을 하나도 못 쓴 세션에서만 비어 있다.
+        if let depthEncoding {
+            manifest["depth_encoding"] = depthEncoding
+        }
+        return manifest
     }
 }

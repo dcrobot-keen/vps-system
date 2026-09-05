@@ -22,7 +22,19 @@
     "end_time": { "type": "number", "description": "유닉스 epoch 초." },
     "frame_count": { "type": "integer", "minimum": 0 },
     "capture_interval_seconds": { "type": "number" },
-    "capture_min_distance_meters": { "type": "number" }
+    "capture_min_distance_meters": { "type": "number" },
+    "depth_encoding": {
+      "type": "object",
+      "description": "depth/*.depth, *.conf의 인코딩. 없으면 v1(float32 둘 다, 192x256). 2026-09-05부터 앱은 v2를 쓴다: depth 'uint16_mm'(0 = 미측정), confidence 'uint8'.",
+      "required": ["format_version", "width", "height", "depth", "confidence"],
+      "properties": {
+        "format_version": { "type": "integer" },
+        "width": { "type": "integer" },
+        "height": { "type": "integer" },
+        "depth": { "type": "string", "description": "'float32_m' 또는 'uint16_mm'" },
+        "confidence": { "type": "string", "description": "'float32' 또는 'uint8'" }
+      }
+    }
   },
   "additionalProperties": true
 }

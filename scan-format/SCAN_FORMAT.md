@@ -41,9 +41,23 @@ scan_<name>/
 
 ## depth/*.depth, depth/*.conf
 
-raw binary float32, row-major, 고정 `(192, 256)` = `(height, width)`, 헤더 없음. `.conf`는 신뢰도(개념적으로는 0/1/2 정수)를 같은 float32/192x256 포맷으로 저장한 것.
+raw binary, row-major, `(192, 256)` = `(height, width)`, 헤더 없음. 인코딩은 두 버전이 있고 `manifest.json`의 `depth_encoding`이 어느 쪽인지 말해준다.
 
-> **알려진 취약점**: 이 `(192, 256)` 크기는 세 Python 소비자 전부(`pipeline/config.py`, `convert_to_colmap.py`)에 **각자 따로** 하드코딩된 상수이지, `manifest.json`이나 `poses.jsonl` 어디에도 명시적으로 기록되지 않는다. 다른 LiDAR 해상도를 쓰는 기기가 추가되면 이 스펙 문서만 봐서는 알 수 없고, 세 곳의 하드코딩을 전부 찾아 고쳐야 한다. **개선 여지(이번 범위 밖)**: depth 해상도를 `poses.jsonl`의 `intrinsics` 옆에 명시적으로 적어두면 이 리스크가 사라진다 — 지금은 스펙을 공유하는 데까지만 하고, 실제 포맷 변경은 별도 작업으로 남겨둔다.
+| | v1 (`depth_encoding` 키 없음, 2026-09-05 이전 스캔) | v2 (`depth_encoding.format_version: 2`) |
+|---|---|---|
+| `.depth` | float32 미터 | **uint16 little-endian 밀리미터**, `0` = 미측정 |
+| `.conf` | float32로 저장된 0/1/2 | **uint8** 0/1/2 (ARKit `confidenceMap` 원본 그대로) |
+| 프레임당 크기 | 196,608 + 196,608 B | 98,304 + 49,152 B |
+
+v2로 바꾼 이유: v1은 `.conf`가 값 셋(0/1/2)을 4바이트씩 쓰고 `.depth`도 LiDAR 정밀도(cm급)에 비해 과한 float32라, 방 하나에 700 MB 중 약 180 MB가 0으로 채워진 바이트였다. 정밀도 손실은 없다(mm 양자화, 65.5 m 범위).
+
+```json
+"depth_encoding": { "format_version": 2, "width": 256, "height": 192, "depth": "uint16_mm", "confidence": "uint8" }
+```
+
+**읽는 쪽 규칙**: `depth_encoding`이 있으면 그대로 따르고, 없으면 v1. 파일 크기로도 구분된다(`4·w·h` = float32, `2·w·h` = uint16, `w·h` = uint8) — `pipeline/dc_vps_pipeline/scan_loader.py`(`load_depth_raw`/`load_confidence_raw`)와 `dc-vps-digital-twin/convert_to_colmap.py`는 2026-09-05부터 둘 다 읽고, 어느 쪽이든 float32 미터 / float32 0-1-2 배열로 돌려준다. 새로 쓰는 코드는 이 로더를 거쳐야 한다.
+
+> v1에서 `(192, 256)`가 소비자마다 하드코딩돼 있던 문제는 v2의 `width`/`height`로 해소된다(v1 스캔은 여전히 하드코딩 상수에 의존). `conformance_check.py`는 매니페스트의 인코딩에 맞춰 두 파일의 크기를 검사한다.
 
 ## scan.usdz
 

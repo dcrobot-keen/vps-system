@@ -64,5 +64,27 @@ def load_scan(scan_dir: Path, valid_only: bool = True) -> list[ScanFrame]:
 
 
 def load_depth_raw(depth_path: Path, width: int, height: int) -> np.ndarray:
-    """Float32 raw depth 파일(row-major, width x height)을 로드한다."""
-    return np.fromfile(depth_path, dtype=np.float32).reshape(height, width)
+    """`.depth` -> float32 미터 (height, width). 두 인코딩을 파일 크기로 구분한다
+    (scan-format/SCAN_FORMAT.md "depth/*.depth"): v1 float32 미터(4·w·h 바이트),
+    v2 uint16 little-endian 밀리미터(2·w·h 바이트, 0 = 미측정 -> 0.0 m로 두면 기존
+    MIN_DEPTH 필터가 그대로 걸러낸다)."""
+    raw = np.fromfile(depth_path, dtype=np.uint8)
+    n = width * height
+    if raw.size == 4 * n:
+        return raw.view(np.float32).reshape(height, width)
+    if raw.size == 2 * n:
+        return raw.view("<u2").reshape(height, width).astype(np.float32) / 1000.0
+    raise ValueError(f"{depth_path}: {raw.size}바이트 -- {height}x{width} float32({4 * n}) 또는 uint16({2 * n})이어야 함")
+
+
+def load_confidence_raw(conf_path: Path, width: int, height: int) -> np.ndarray:
+    """`.conf` -> float32 (height, width), 값 0/1/2. v1은 float32로 저장된 값(4·w·h),
+    v2는 uint8 원본(w·h). 소비자는 늘 float32 배열을 받으므로 `>= MIN_CONFIDENCE`
+    비교가 두 버전에서 같게 동작한다."""
+    raw = np.fromfile(conf_path, dtype=np.uint8)
+    n = width * height
+    if raw.size == 4 * n:
+        return raw.view(np.float32).reshape(height, width)
+    if raw.size == n:
+        return raw.reshape(height, width).astype(np.float32)
+    raise ValueError(f"{conf_path}: {raw.size}바이트 -- {height}x{width} float32({4 * n}) 또는 uint8({n})이어야 함")
