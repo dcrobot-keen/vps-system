@@ -4,7 +4,7 @@ import MetalKit
 import os
 import simd
 
-private let logger = Logger(subsystem: "com.dcrobot.scanmesh", category: "TextureBaker")
+private let logger = Logger(subsystem: "com.dcrobot.keen.scanmesh", category: "TextureBaker")
 
 /// 스캔 하나(`scan_<name>/`)의 `scan.usdz` + `rgb/` + `poses/poses.jsonl`을 입력으로
 /// 받아, 원본 사진을 mesh에 직접 프로젝션해서 텍스처를 굽고 `textured.glb`로 내보낸다.

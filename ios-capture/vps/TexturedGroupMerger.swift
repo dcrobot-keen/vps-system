@@ -2,7 +2,7 @@ import Foundation
 import os
 import simd
 
-private let logger = Logger(subsystem: "com.dcrobot.scanmesh", category: "TexturedGroupMerger")
+private let logger = Logger(subsystem: "com.dcrobot.keen.scanmesh", category: "TexturedGroupMerger")
 
 /// 스캔별 `textured.glb`(TextureBaker 결과)를 정렬 변환 + 바닥 높이 오프셋 적용해 primitive
 /// 여러 개짜리 GLB 하나로 합친다. 텍스처는 스캔별 아틀라스를 그대로 옮겨 담으므로 다시

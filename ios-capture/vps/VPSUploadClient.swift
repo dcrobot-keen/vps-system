@@ -1,7 +1,7 @@
 import Foundation
 import os
 
-private let logger = Logger(subsystem: "com.dcrobot.scanmesh", category: "VPSUploadClient")
+private let logger = Logger(subsystem: "com.dcrobot.keen.scanmesh", category: "VPSUploadClient")
 
 /// scan_<name>/ 폴더를 압축한 zip을 VPS 서버의 `POST /scans`에 올리고, `GET
 /// /scans/{scan_name}`으로 완료까지 폴링한다. 이 앱의 첫 네트워킹 코드 -- 별도
@@ -46,7 +46,7 @@ enum VPSUploadClient {
 
     /// 앱이 재시작돼도(백그라운드 세션이 다시 이 식별자로 이벤트를 붙여준다) 같은
     /// 세션으로 인식되도록 고정 문자열을 쓴다.
-    private static let backgroundSessionIdentifier = "com.dcrobot.scanmesh.upload"
+    private static let backgroundSessionIdentifier = "com.dcrobot.keen.scanmesh.upload"
 
     /// `AppDelegate.application(_:handleEventsForBackgroundURLSession:completionHandler:)`가
     /// 여기 저장해두면, 백그라운드 세션의 모든 이벤트를 다 받은 뒤

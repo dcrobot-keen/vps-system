@@ -2,7 +2,7 @@ import CoreImage
 import Vision
 import os
 
-private let logger = Logger(subsystem: "com.dcrobot.scanmesh", category: "FaceRedactor")
+private let logger = Logger(subsystem: "com.dcrobot.keen.scanmesh", category: "FaceRedactor")
 
 /// 캡처한 RGB 프레임에서 사람 얼굴을 감지해 모자이크 처리한다. 공용 공간을
 /// 스캔하다 보면 사람이 찍히는 걸 완전히 피하기 어려운데, 그 사진들이 VPS DB

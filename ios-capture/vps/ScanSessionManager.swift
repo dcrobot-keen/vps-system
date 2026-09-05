@@ -111,7 +111,7 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
     private var isStorageCritical = false
 
     private let ciContext = CIContext()
-    private let logger = Logger(subsystem: "com.dcrobot.scanmesh", category: "ScanSession")
+    private let logger = Logger(subsystem: "com.dcrobot.keen.scanmesh", category: "ScanSession")
 
     /// 얼굴 검출+JPEG 인코딩+raw depth/confidence 쓰기를 ARSession 델리게이트
     /// 콜백 스레드 밖으로 옮기는 큐 -- 이 작업들이 전부 콜백 안에서 동기로 돌면

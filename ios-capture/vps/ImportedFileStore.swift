@@ -2,7 +2,7 @@ import Combine
 import Foundation
 import os
 
-private let logger = Logger(subsystem: "com.dcrobot.scanmesh", category: "ImportedFileStore")
+private let logger = Logger(subsystem: "com.dcrobot.keen.scanmesh", category: "ImportedFileStore")
 
 /// glb/pcd/ply/usdz/obj 같은 외부 3D 결과물(파이프라인/scan-to-map-studio/
 /// Gaussian Splatting 등에서 나온 파일)을 폰으로 가져와서 보기 위한 저장소.
