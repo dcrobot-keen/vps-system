@@ -33,6 +33,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
 from . import scan_jobs
+from .frames import frames_from_env
 from .localize import Localizer
 
 app = FastAPI(title="dc-vps localization server")
@@ -98,6 +99,8 @@ def _resolve_initial_db_dirs() -> list[Path]:
 
 DB_DIRS = _resolve_initial_db_dirs()
 localizer = Localizer(DB_DIRS)
+# 방별 ScanAlignment(선택, DC_VPS_GROUP_ALIGNMENT) -- /localize 응답의 frame 필드. app/frames.py 참고.
+frames = frames_from_env()
 
 
 @app.get("/health")
@@ -112,7 +115,7 @@ class AddRoomRequest(BaseModel):
 
 @app.get("/rooms")
 def list_rooms() -> dict:
-    return {"rooms": localizer.list_rooms()}
+    return {"rooms": localizer.list_rooms(), "frames": frames.describe()}
 
 
 @app.post("/rooms")
@@ -233,4 +236,6 @@ async def localize(
         "num_inliers": result.num_inliers,
         "runner_up_room_id": result.runner_up_room_id,
         "runner_up_inliers": result.runner_up_inliers,
+        # 이 room 을 그룹 기준 좌표계로 옮기는 ScanAlignment (그룹 정렬이 설정된 경우만).
+        "frame": frames.frame_for(result.room_id),
     }

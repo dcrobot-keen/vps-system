@@ -217,3 +217,19 @@ sanity check.
 pip install -r requirements-dev.txt
 python -m pytest tests/ -v
 ```
+
+## 방별 좌표계 -> 그룹 기준 좌표계 (`frame`)
+
+`/localize`는 매칭된 room(=`scan_<name>` DB)의 ARKit world 좌표로 pose를 돌려준다. 방이 여러 개인
+현장에서 pathfinder 프로젝트·시뮬레이터 월드는 정합 워크스페이스(scan-to-map-studio)가 만든
+**그룹 기준 스캔** 좌표계를 쓰므로, 방마다 ScanAlignment가 필요하다.
+
+```bash
+DC_VPS_GROUP_ALIGNMENT=/path/to/group_alignment.json uvicorn app.main:app ...
+```
+
+를 주면 `/localize` 응답에 `frame: { group, mapId, reference, alignment: {offsetX, offsetZ, yawRadians, method} }`가
+붙고(`scan-group-alignment-v1`, `scan-format/SCAN_FORMAT.md`), `/rooms`에 `frames` 요약이 나온다. 기준 스캔은
+항등 변환, 정렬 파일에 없는 room은 `frame: null`. 변환 수학은 소비자가 한다 -- ros-chromium의
+`VpsCorrectionNode.applyFrame`(ARKit 평면 `x' = x cos + z sin + offsetX`, `z' = -x sin + z cos + offsetZ`, 슬라이스 평면 `y = -z`).
+`app/frames.py`, `tests/test_frames.py`.
