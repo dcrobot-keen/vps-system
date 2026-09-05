@@ -35,8 +35,8 @@ scan_<name>/
 | `rgb_path` | string | `scan_<name>/` 기준 상대경로 |
 | `depth_path` | string | `scan_<name>/` 기준 상대경로. 같은 이름의 `.conf` 파일이 옆에 있다고 가정 |
 | `camera_transform` | number[4][4] | row-major, camera-to-world, **ARKit/OpenGL 축 규약**(Y-up). 마지막 행 고정 `[0,0,0,1]` |
-| `intrinsics.{fx,fy,cx,cy}` | number | RGB 해상도 기준 |
-| `intrinsics.{width,height}` | int | RGB 해상도 |
+| `intrinsics.{fx,fy,cx,cy}` | number | **저장된** RGB 이미지 해상도 기준 |
+| `intrinsics.{width,height}` | int | 저장된 RGB 이미지 크기. 2026-09-05부터 앱은 긴 변 1600 px(1600×1200)로 저장하고 intrinsics를 같은 배율로 기록한다(옛 스캔은 1920×1440). **소비자는 depth 배율을 이 값으로 계산해야 한다** -- `pipeline/geometry.depth_scale(image_size)`, digital-twin은 원래부터 이 값을 씀 |
 | `tracking_state` | `"normal"` \| `"notAvailable"` \| `"limited"` | 세 소비자 모두 `"normal"`이 아닌 프레임은 버린다 |
 
 `dc-vps-digital-twin/convert_to_colmap.py`는 여기서 COLMAP(OpenCV 축 규약)으로 변환하고, `convert_to_transforms_json.py`는 ARKit 축 규약이 Nerfstudio/Instant-NGP와 이미 맞는다는 전제로 `camera_transform`을 그대로 `transform_matrix`에 옮긴다.

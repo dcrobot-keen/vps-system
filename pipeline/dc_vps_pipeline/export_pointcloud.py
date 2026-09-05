@@ -27,10 +27,13 @@ from .scan_loader import ScanFrame, load_confidence_raw, load_depth_raw, load_sc
 
 
 def _sample_rgb_colors(rgb_path: Path, u_depth: np.ndarray, v_depth: np.ndarray) -> np.ndarray:
-    """depth 해상도 좌표(u_depth, v_depth)에 대응하는 RGB 픽셀을 nearest-neighbor로 샘플링한다."""
+    """depth 해상도 좌표(u_depth, v_depth)에 대응하는 RGB 픽셀을 nearest-neighbor로 샘플링한다.
+    배율은 실제로 읽은 이미지 크기에서 얻는다(1920 또는 1600 폭 어느 쪽이든)."""
     image = np.asarray(Image.open(rgb_path).convert("RGB"))
-    u_rgb = np.clip(np.round(u_depth / config.SCALE_X).astype(np.int64), 0, image.shape[1] - 1)
-    v_rgb = np.clip(np.round(v_depth / config.SCALE_Y).astype(np.int64), 0, image.shape[0] - 1)
+    scale_x = config.DEPTH_WIDTH / image.shape[1]
+    scale_y = config.DEPTH_HEIGHT / image.shape[0]
+    u_rgb = np.clip(np.round(u_depth / scale_x).astype(np.int64), 0, image.shape[1] - 1)
+    v_rgb = np.clip(np.round(v_depth / scale_y).astype(np.int64), 0, image.shape[0] - 1)
     return image[v_rgb, u_rgb]
 
 
@@ -55,7 +58,7 @@ def backproject_frame_dense(frame: ScanFrame) -> tuple[np.ndarray, np.ndarray | 
     if len(z) == 0:
         return np.empty((0, 3)), None
 
-    K_depth = scale_intrinsics_to_depth(frame.intrinsics)
+    K_depth = scale_intrinsics_to_depth(frame.intrinsics, frame.image_size)
     x_cam = (u - K_depth[0, 2]) * z / K_depth[0, 0]
     y_cam = (v - K_depth[1, 2]) * z / K_depth[1, 1]
     points_cam = np.stack([x_cam, y_cam, z, np.ones_like(z)], axis=1)

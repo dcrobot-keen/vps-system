@@ -63,12 +63,15 @@ def build_db(scan_dir: Path, output_dir: Path) -> None:
                 else None
             )
 
-            K_depth = scale_intrinsics_to_depth(frame.intrinsics)
+            # keypoints는 hloc이 읽은 저장 이미지 좌표(1920 또는 1600 폭) -- 그 프레임의
+            # image_size로 depth 해상도에 맞춘다
+            K_depth = scale_intrinsics_to_depth(frame.intrinsics, frame.image_size)
 
             points_3d = []
             for kp in keypoints:
                 p = backproject_filtered(
-                    tuple(kp), depth, confidence, K_depth, frame.camera_transform
+                    tuple(kp), depth, confidence, K_depth, frame.camera_transform,
+                    image_size=frame.image_size,
                 )
                 points_3d.append(p)
 

@@ -675,7 +675,13 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
     /// 디스크에 쓰는 게 곧 VPS 업로드/텍스처 베이킹/썸네일이 보는 전부이므로,
     /// 여기 한 곳만 처리하면 원본(비식별화 전) 얼굴 픽셀이 어디에도 안 남는다.
     private func saveRGB(_ pixelBuffer: CVPixelBuffer, index: Int) {
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        let full = CIImage(cvPixelBuffer: pixelBuffer)
+        // 긴 변 1600px로 줄여 저장한다(RGBSaveScale) -- hloc이 어차피 그 크기로 리사이즈한다.
+        // appendPose가 intrinsics를 같은 배율로 기록하므로 두 값은 항상 같은 함수에서 나온다.
+        let factor = RGBSaveScale.factor(for: full.extent.size)
+        let ciImage = factor < 1
+            ? full.applyingFilter("CILanczosScaleTransform", parameters: [kCIInputScaleKey: factor, kCIInputAspectRatioKey: 1.0])
+            : full
         let redacted = FaceRedactor.redactFaces(in: ciImage)
         guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
               let jpegData = ciContext.jpegRepresentation(
@@ -799,8 +805,13 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
 
     func appendPose(frame: ARFrame, index: Int) {
         let t = frame.camera.transform // camera-to-world 4x4
-        let intr = frame.camera.intrinsics // 3x3, raw(landscape) 기준
+        let intr = frame.camera.intrinsics // 3x3, raw(landscape) 기준, 캡처 해상도
         let resolution = frame.camera.imageResolution
+        // 저장 이미지(saveRGB, 긴 변 1600)와 같은 배율로 intrinsics를 기록한다 -- 소비자는
+        // 레코드의 width/height로 depth 배율을 계산하므로 여기서 어긋나면 정합이 틀어진다.
+        let factor = RGBSaveScale.factor(for: resolution)
+        let saved = RGBSaveScale.savedSize(for: resolution)
+        let k = RGBSaveScale.scaledIntrinsics(fx: intr[0, 0], fy: intr[1, 1], cx: intr[2, 0], cy: intr[2, 1], factor: factor)
 
         let record = ScanRecordBuilder.buildPoseRecord(
             frameId: index,
@@ -808,8 +819,7 @@ final class ScanSessionManager: NSObject, ObservableObject, ARSessionDelegate {
             rgbPath: "rgb/frame_\(paddedIndex(index)).jpg",
             depthPath: "depth/frame_\(paddedIndex(index)).depth",
             cameraTransform: matrixToArray(t),
-            intrinsics: (fx: intr[0, 0], fy: intr[1, 1], cx: intr[2, 0], cy: intr[2, 1],
-                         width: Int(resolution.width), height: Int(resolution.height)),
+            intrinsics: (fx: k.fx, fy: k.fy, cx: k.cx, cy: k.cy, width: saved.width, height: saved.height),
             trackingState: trackingStateString(frame.camera.trackingState)
         )
 

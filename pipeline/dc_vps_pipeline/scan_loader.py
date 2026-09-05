@@ -16,8 +16,12 @@ class ScanFrame:
     rgb_path: Path
     depth_path: Path
     camera_transform: np.ndarray  # 4x4 camera-to-world
-    intrinsics: np.ndarray  # 3x3, RGB 해상도 기준
+    intrinsics: np.ndarray  # 3x3, 저장된 RGB 이미지 해상도 기준
     tracking_state: str
+    # 저장된 RGB 이미지의 (width, height). intrinsics와 같은 해상도다. 2026-09-05부터
+    # 앱이 긴 변 1600px로 저장하므로 (1600, 1200); 옛 스캔은 (1920, 1440). depth 해상도로
+    # 내리는 스케일은 반드시 이 값으로 계산한다(config의 RGB_* 상수는 옛 스캔 폴백).
+    image_size: tuple[int, int] = (1920, 1440)
 
 
 def load_scan(scan_dir: Path, valid_only: bool = True) -> list[ScanFrame]:
@@ -57,6 +61,7 @@ def load_scan(scan_dir: Path, valid_only: bool = True) -> list[ScanFrame]:
                     camera_transform=np.array(record["camera_transform"]),
                     intrinsics=K,
                     tracking_state=record["tracking_state"],
+                    image_size=(int(intr.get("width", 1920)), int(intr.get("height", 1440))),
                 )
             )
 

@@ -5,12 +5,16 @@ server/도 이 모듈을 그대로 import해서 쓴다 (pip install -e ../pipeli
 좌표계/디스크립터가 호환된다. 이 값들을 바꾸면 기존 DB를 다시 빌드해야 한다.
 """
 
-# iPhone LiDAR 해상도 (RGB, depth/confidence) — 종횡비 동일(4:3)이므로 스케일은 1축으로 충분
+# iPhone LiDAR 해상도 (RGB, depth/confidence) — 종횡비 동일(4:3)이므로 스케일은 1축으로 충분.
+# RGB_WIDTH/HEIGHT는 poses.jsonl에 intrinsics.width/height가 없는 옛 레코드의 폴백일 뿐이다 --
+# 2026-09-05부터 앱은 RGB를 1600x1200으로 저장하고 레코드에 그 크기를 적으므로,
+# 실제 배율은 geometry.depth_scale(frame.image_size)로 프레임마다 구한다.
 RGB_WIDTH = 1920
 RGB_HEIGHT = 1440
 DEPTH_WIDTH = 256
 DEPTH_HEIGHT = 192
 
+# 옛 이름 유지(외부 스크립트 호환). 새 코드는 geometry.depth_scale(image_size)를 쓸 것.
 SCALE_X = DEPTH_WIDTH / RGB_WIDTH
 SCALE_Y = DEPTH_HEIGHT / RGB_HEIGHT
 
